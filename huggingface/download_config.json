@@ -1,0 +1,79 @@
+{
+    "OOTDiffusion":{
+        "repo_id": "levihsu/OOTDiffusion",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/checkpoints/ootd",
+        "allow_patterns": [
+            "checkpoints/*"
+        ]
+    },
+    
+    "clip-vit": {
+        "repo_id": "openai/clip-vit-large-patch14",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/checkpoints/clip-vit-large-patch14",
+        "allow_patterns": [
+            "config.json",
+            "preprocessor_config.json",
+            "pytorch_model.bin",
+            "model.safetensors",
+            "tokenizer_config.json", 
+            "vocab.json", 
+            "merges.txt", 
+            "tokenizer.json", 
+            "special_tokens_map.json"
+        ]
+    },
+
+    "laion-clip": {
+        "repo_id": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/z_experiment/baseline/LaDI_VTON/checkpoint/checkpoints/CLIP-ViT-H-14-laion2B-s32B-b79K",
+        "allow_patterns": ["*.json", "*.bin", "*.safetensors", "*.txt"]
+    },
+
+    "sd-inpainting": {
+        "repo_id": "stabilityai/stable-diffusion-2-inpainting",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/z_experiment/baseline/LaDI_VTON/checkpoint/stable-diffusion-2-inpainting",
+        "allow_patterns": [
+            "model_index.json",
+            "scheduler/*",
+            "text_encoder/*",
+            "tokenizer/*",
+            "unet/*",
+            "vae/*",
+            "feature_extractor/*"
+        ]
+    },
+
+    "paint-by-example": {
+        "repo_id": "Fantasy-Studio/Paint-by-Example",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/checkpoints/Paint-by-Example",
+        "allow_patterns": ["*"]
+    },
+
+    "sd-checker": {
+        "repo_id": "CompVis/stable-diffusion-safety-checker",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/checkpoints/stable-diffusion-safety-checker",
+        "allow_patterns": [
+            "*"
+        ]
+    },
+
+    "stable-diffusion-v1-5":{
+        "repo_id": "rupeshs/LCM-runwayml-stable-diffusion-v1-5",
+        "download_dir": "/root/TenMiles/VTON/OOTDiffusion/checkpoints/stable-diffusion-v1-5",
+        "allow_patterns": [
+            "*"
+        ]
+    },
+
+    "deepseek-r1-distill-qwen-14b": {
+        "repo_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+        "download_dir": "/home/ubutnu/code/AI4LocalKnowledgeBase/models/deepseek-r1-distill-qwen-14b",
+        "allow_patterns": ["*"]
+    },
+
+    "bge-reranker-v2-m3": {
+        "repo_id": "BAAI/bge-reranker-v2-m3",
+        "download_dir": "/home/ubutnu/code/AI4LocalKnowledgeBase/models/bge-reranker-v2-m3",
+        "allow_patterns": ["*"]
+    }
+}

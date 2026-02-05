@@ -1,0 +1,32 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ai4kb-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 支持通过环境变量配置 Host/Port，默认值为 localhost:3307 (本地开发)
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/ai4kb?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: infini_rag_flow
+  main:
+    allow-bean-definition-overriding: true
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# RAGFlow Configuration
+ragflow:
+  # 支持通过环境变量配置 Base URL，默认值为 localhost:8084
+  base-url: ${RAGFLOW_BASE_URL:http://localhost:8084}
+  # This API Key should be a system-level admin key for RAGFlow
+  # You can get it from RAGFlow UI or database
+  api-key: ${RAGFLOW_API_KEY:ragflow-system-admin-key}
+
+logging:
+  level:
+    com.ai4kb.backend: DEBUG
