@@ -19,6 +19,11 @@ public class ChatController {
     public Flux<String> chat(@RequestHeader("X-User-Name") String username,
                              @RequestBody Map<String, Object> body) {
         String question = (String) body.get("question");
-        return chatProcessor.process(username, question);
+        if (question == null || question.isBlank()) {
+            question = (String) body.get("query");
+        }
+        Object streamObj = body.get("stream");
+        boolean stream = streamObj instanceof Boolean ? (Boolean) streamObj : true;
+        return chatProcessor.process(username, question, stream);
     }
 }

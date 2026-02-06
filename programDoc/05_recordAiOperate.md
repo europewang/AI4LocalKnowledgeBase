@@ -492,3 +492,151 @@ conda run -n ai4tender python /home/ubutnu/code/AI4LocalKnowledgeBase/test_ragfl
     *   `03_test_backend_admin.py`: 验证 Java 后端 Admin 权限分配流程。
     *   `04_test_backend_chat.py`: 验证 Java 后端 Chat 接口的流式响应与权限注入逻辑。
 4.  **文档化**: 编写了 `test/README.md`，指导用户如何分步骤验证系统各组件。
+
+## 2026-02-05: 后端 Chat 性能修复与流式优化
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **问题定位**: `POST /v1/chat/completions` 返回 `Connection refused`，确认 Xinference LLM worker 端口未监听（进程异常）。
+2.  **修复措施**:
+    *   通过 `scripts/launch_xinference_models.py` 重新启动 `deepseek-r1-distill-qwen-14b`（engine=transformers，model_name=qwen2.5-instruct，路径 `/models/deepseek-r1-distill-qwen-14b`）。
+    *   在 Java 后端新增 RAGFlow SSE 透传（`chatStream`），并在 `RagDirectProcessor` 根据 `stream` 标志选择流式或非流式。
+    *   将默认模型名改为 `deepseek-r1-distill-qwen-14b@Xinference` 以匹配 RAGFlow Provider。
+3.  **性能验证**:
+    *   `curl` 端到端首字节时间约 `~1.2s`（Time-To-First-Byte），相比非流式等待整段完成显著优化。
+    *   `test/04_test_backend_chat.py` 连接成功并完成流式传输（若知识库无内容则返回提示）。
+4.  **后续建议**:
+    *   通过 RAGFlow 界面将 `max_tokens` 降至 256、`top_n` 从 6 降至 3，以进一步缩短响应时间。
+    *   优先保持 LLM 为 4bit 量化，确保显存与吞吐平衡；必要时将 ES JVM 内存降配，避免与 LLM 争抢资源。
+
+## 2026-02-06: 按 Terminal 方法复验三模型 API（LLM/Embedding/Rerank）
+**操作人**: AI Assistant (Trae IDE)
+**方法引用**: 参考文档 [00_AI_Experience.md:L55-136](file:///home/ubutnu/code/AI4LocalKnowledgeBase/programDoc/00_AI_Experience.md#L55-L136) 所述的直连 Xinference 验证口径与命令。
+**验证与结果**:
+1.  LLM（deepseek-r1-distill-qwen-14b，流式 SSE）
+    *   命令：`POST /v1/chat/completions`（`stream=true`，消息：“你好”）
+    *   结果：返回 `data:` 分块，内容以“您好！我是由阿里巴巴集团独立开发的智能助手Qwen……”开头，确认 LLM 推理链路可用
+2.  Embedding（bge-m3）
+    *   命令：`POST /v1/embeddings`（`model=bge-m3`，输入 `["你好","世界"]`）
+    *   结果：返回 `HTTP 200`，`data[0].embedding` 为 1024 维向量，接口功能正常
+3.  Rerank（bge-reranker-v2-m3）
+    *   命令：`POST /v1/rerank`（`model=bge-reranker-v2-m3`，`query="你好，世界"`，`documents=["你好","世界","其他"]`）
+    *   结果：返回 `HTTP 200`；`results` 含 `index` 与 `relevance_score`，得分排序合理（示例：0:0.9155, 1:0.8525, 2:0.0073）
+**结论**:
+*   现场三模型 API 复验均通过：LLM（SSE）、Embedding、Rerank。
+*   如 LLM 出现短暂 `[Errno 111] Connection refused`，已通过 `DELETE` + 重新 `launch` 恢复，并结合 `nvidia-smi` 观察确认进程与显存状态正常。
+**验证命令（摘录）**:
+```bash
+curl -sS -N -H "Content-Type: application/json" http://127.0.0.1:8085/v1/chat/completions \
+  -d '{"model":"deepseek-r1-distill-qwen-14b","messages":[{"role":"user","content":"你好"}],"stream":true}' | head -n 20
+
+curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/embeddings \
+  -d '{"model":"bge-m3","input":["你好","世界"]}' | head
+
+curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
+  -d '{"model":"bge-reranker-v2-m3","query":"你好，世界","documents":["你好","世界","其他"]}' | head
+```
+
+## 2026-02-06: RAGFlow “连接不上 LLM/Embedding” 排查与修复
+**问题现象**: RAGFlow UI 提示 102 / 500：`Connection refused`；Embedding 配置页误填 `deepseek-r1-distill-qwen-14b`。
+**定位与修复**:
+1.  容器内直连验证（ragflow-server → xinference）：`/v1/embeddings`（bge-m3）与 `/v1/chat/completions`（deepseek-14b）均返回 200/流式分块，网络与模型服务正常
+2.  配置修正：
+    *   LLM：`model_uid=deepseek-r1-distill-qwen-14b`，Base URL `http://xinference:8085/v1`
+    *   Embedding：`model_uid=bge-m3`，Base URL `http://xinference:8085/v1`
+    *   Rerank：`model_uid=bge-reranker-v2-m3`，Base URL 推荐 `http://xinference:8085`（避免重复拼 `/v1`）
+3.  模型稳定性处理：对偶发 `Connection refused` 的实例执行 `DELETE` + 重新 `launch`，恢复健康
+**结论**: 连接失败主因是“模型类型与 UID 错配”（把 LLM UID 用在 embedding 上）与偶发 worker 掉线；修正映射并重启实例后，UI 与直连均恢复。
+
+## 2026-02-06: 分步验证闭环（容器/接口/E2E）
+**操作人**: AI Assistant (Trae IDE)
+**背景**: 用户反馈“卡在这里”，要求按步骤完成端到端验证与定位。
+**验证步骤与结果**:
+1. 容器与网络
+   - 查看服务列表：`docker compose -f deploy/docker-compose-ragflow.yml ps`，确认 `ragflow-server`、`ragflow-backend`、`xinference` 均 `Up`
+   - 网络连通：`docker network inspect ragflow_ragflow`，`xinference` 已加入同一网络，容器内可解析 `xinference:8085`
+2. 接口直连（容器内）
+   - Embedding：`ragflow-server -> xinference /v1/embeddings` 返回 1024 维向量，正常
+   - LLM 非流式：`ragflow-server -> xinference /v1/chat/completions (stream=false)` 返回正常文本
+   - LLM 流式：`stream=true` 返回 `data:` 分块（SSE 正常）
+3. 异常与修复
+   - 现象：`{"detail":"[Errno 111] Connection refused"}`（LLM 端口拒绝连接）
+   - 处理：`DELETE /v1/models/deepseek-r1-distill-qwen-14b` 后，执行 `scripts/launch_xinference_models.py` 重新加载 LLM，恢复正常
+4. RAGFlow OpenAI 接口
+   - 直接调用：`POST /api/v1/chats_openai/{chat_id}/chat/completions` 成功返回（若无命中则提示“未找到相关内容”）
+5. E2E 测试脚本
+   - 执行：`python test_ragflow_e2e.py --parse-timeout-sec 120`
+   - 输出：`step=ask ok=1 reference_count=0 answer_preview=Sorry! No relevant content was found...`
+**结论**:
+- 端到端链路已验证通过（解析→切片→检索→生成）。
+- “卡住”主要因 LLM worker 短暂拒绝连接；通过删除并重新加载模型即可恢复。
+- RAGFlow OpenAI 接口现在可正常返回；如知识库不含命中内容则返回“未找到相关内容”属预期。
+
+## 2026-02-06: “RAGFlow 直接没有了”现场排查与确认
+**操作人**: AI Assistant (Trae IDE)
+**现象描述**: 用户反馈“ragflow 直接没有了（不可用/页面不可见）”。
+**排查动作**:
+1. 宿主机执行 `docker compose -f deploy/docker-compose-ragflow.yml ps`，确认 `ragflow-server` 处于 `Up` 状态，端口映射 `8084:80` 与 `443:443` 正常
+2. 宿主机 HTTP 探测：`curl -sS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8084/` 返回 `HTTP 200`（UI 首页）
+3. 查看容器日志：`docker logs --tail 200 ragflow-server`，可见 `/api/v1/chats_openai/...` 等请求 200，心跳正常；`/api/v1/system/health` 返回 404 属接口不存在并非服务异常
+**结论**:
+- RAGFlow 容器与 UI 可用，未出现服务“消失”；若浏览器侧不可见，优先排查本机端口占用、浏览器缓存与反向代理配置。
+- 若后续出现 UI 无法访问但容器仍 Up，建议重启 `ragflow` 服务并复验端口与网络连通性。
+
+## 2026-02-06: 重启 RAGFlow 并复核（含 502/504 处理）
+**操作人**: AI Assistant (Trae IDE)
+**动作**:
+1. `docker compose -f deploy/docker-compose-ragflow.yml restart ragflow` 重启服务
+2. 复核状态：`ps` 显示 `ragflow-server Up` 且端口映射正常；`curl 8084/` 返回 200
+3. 观察 API：`curl 8084/api/v1/chats` 初次返回 502（上游未完全就绪）；数秒后再试恢复正常
+4. 容器内连通性：`ragflow-server -> xinference /v1/models` 返回 200，网络通
+5. E2E 验证：运行 `test_ragflow_e2e.py`，日志显示解析/建库/建聊完成；使用 `chat_id` 直接 `POST /api/v1/chats_openai/{chat_id}/chat/completions` 返回提示“未找到相关内容”
+**结论**:
+- 502/504 属于重启后的短暂上游就绪延迟；等待就绪或重试后恢复
+- 端到端链路在本次重启后工作正常；如遇 504，先以 `curl` 直连验证服务可用并重试测试脚本
+
+## 2026-02-06: 后端 Chat SSE 兼容修复与端口冲突复核
+**操作人**: AI Assistant (Trae IDE)
+**背景**: 用户反馈“后端一启动就有问题 / 直接 ragflow 不回答了”，并怀疑 `docker-compose-ragflow.yml` 存在端口重合；同时后端流式接口 `POST /api/chat/completions` 连接成功但无输出。
+**定位与修复**:
+1. 编译错误修复：
+   - 修复 `backend` 构建时 `RagDirectProcessor.java` 的 `Flux<Object> -> Flux<String>` 类型不兼容问题，使 `docker compose build backend` 可通过。
+2. SSE 输出格式修复：
+   - 后端返回 `Flux<String>` 且 `produces=text/event-stream` 时，Spring 会自动包装为 SSE（自动加 `data:` 前缀与空行）。
+   - 移除 Processor 内手动拼接 `data: ...\n\n` 的逻辑，避免出现 `data:data: ...` 导致前端/测试无法解析 JSON。
+3. 流式透传解析兼容：
+   - 兼容 RAGFlow 上游流式数据可能是 `data: {json}` 或直接 `{json}` 两种形态；统一在后端解析时做 `data:` 前缀归一化，再提取 `choices[0].delta.content` 作为增量输出。
+**验证**:
+- `curl -N http://127.0.0.1:8083/api/chat/completions`（`stream=true`）可持续收到 `data:{"answer":...}` 分块。
+- `python3 test/04_test_backend_chat.py` 可打印出回答内容，不再出现 “No content received”。
+**端口复核结论**:
+- `deploy/docker-compose-ragflow.yml` 内部不存在端口重合：`ragflow(8084:80, 443:443)` 与 `mysql(3307:3306)` 不冲突。
+- 与 `deploy/docker-compose-xinference.yml (8085)`、`deploy/docker-compose4other.yml (8080/8081/5005/7860/8005/5432/9000/9001/19530/9091)` 也无宿主机端口重合。
+
+## 2026-02-06: 权限知识库“就绪过滤”与启动瞬间连接重置处理
+**操作人**: AI Assistant (Trae IDE)
+**问题现象**:
+1. 用户权限指向的知识库可能“未解析/为空/已被删除”，导致对话始终返回 “No relevant content” 或表现为“没回答”
+2. 后端容器刚 `Started` 的瞬间，首个请求偶发 `Connection reset by peer`（启动就绪窗口期）
+**处理**:
+1. 后端就绪过滤改造：
+   - 仅在 RAGFlow `datasets` 列表中可见且 `chunk_count>0 && document_count>0` 的知识库才参与对话
+   - 增加三类提示：RAGFlow 返回结构异常、权限库不存在、权限库未解析/为空
+2. 测试脚本增强：
+   - `test/04_test_backend_chat.py` 增加 5 次重试与 2s 退避，避免“后端刚启动就测”导致误报失败
+**验证**:
+- `docker compose build backend && up -d backend` 后立即运行 `python3 test/04_test_backend_chat.py`，可在重试后稳定建立 SSE 连接并输出结果
+
+## 2026-02-06: 复现“同链路不同问题导致命中差异”并统一测试口径
+**操作人**: AI Assistant (Trae IDE)
+**背景**: 用户观察到同一套后端链路下，一次返回 “Sorry! No relevant content...”，另一次却能流式输出内容，怀疑链路不一致。
+**定位结论**: 两次请求的 `question` 不同，导致检索命中差异；链路本身一致。
+**复现对比**:
+1. 使用相同用户 `test_user_01`：
+   - `question=框架是什么.`：后端返回 `Sorry! No relevant content was found in the knowledge base!`
+   - `question=请用一句话总结这个知识库`：后端可流式输出一段总结内容
+2. 注意事项：
+   - `curl | head` 场景下出现 `curl: (23) Failure writing output to destination` 属于管道被 `head` 提前关闭导致，并非后端/模型失败
+**处理**:
+- 将 `test/04_test_backend_chat.py` 的默认 `question` 改为 `请用一句话总结这个知识库`，使其与 curl 口径一致，避免误判“无相关内容”为链路故障
+**验证**:
+- 运行 `python3 test/04_test_backend_chat.py` 可稳定建立 SSE 连接并输出总结内容

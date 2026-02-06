@@ -13,6 +13,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -31,6 +32,13 @@ public class AdminController {
 
     @PostMapping("/user")
     public User createUser(@RequestBody User user) {
+        User existing = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, user.getUsername()));
+        if (existing != null) {
+            return existing;
+        }
+        if (user.getCreateTime() == null) {
+            user.setCreateTime(LocalDateTime.now());
+        }
         userMapper.insert(user);
         return user;
     }
