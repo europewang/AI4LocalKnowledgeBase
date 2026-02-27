@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.SynchronousSink;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "ai4kb.processor.mode", havingValue = "rag", matchIfMissing = true)
 @RequiredArgsConstructor
 public class RagDirectProcessor implements ChatProcessor {
 
@@ -157,18 +159,29 @@ public class RagDirectProcessor implements ChatProcessor {
                         JsonNode choices = json.path("choices");
                         if (choices.isArray() && !choices.isEmpty()) {
                             JsonNode delta = choices.get(0).path("delta");
+                            
+                            String text = "";
                             JsonNode content = delta.path("content");
                             if (content.isTextual()) {
-                                String payload = _buildPayload(content.asText(""), null);
+                                text = content.asText("");
+                            } else {
+                                JsonNode deltaAnswer = delta.path("answer");
+                                if (deltaAnswer.isTextual()) {
+                                    text = deltaAnswer.asText("");
+                                }
+                            }
+                            
+                            JsonNode reference = delta.path("reference");
+                            if (reference.isMissingNode() || reference.isNull()) {
+                                reference = null;
+                            }
+                            
+                            if (!text.isEmpty() || reference != null) {
+                                String payload = _buildPayload(text, reference);
                                 sink.next(payload);
                                 return;
                             }
-                            JsonNode deltaAnswer = delta.path("answer");
-                            if (deltaAnswer.isTextual()) {
-                                String payload = _buildPayload(deltaAnswer.asText(""), null);
-                                sink.next(payload);
-                                return;
-                            }
+
                             JsonNode message = choices.get(0).path("message").path("content");
                             if (message.isTextual()) {
                                 String payload = _buildPayload(message.asText(""), null);

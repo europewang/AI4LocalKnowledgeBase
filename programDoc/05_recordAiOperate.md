@@ -640,3 +640,72 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 - 将 `test/04_test_backend_chat.py` 的默认 `question` 改为 `请用一句话总结这个知识库`，使其与 curl 口径一致，避免误判“无相关内容”为链路故障
 **验证**:
 - 运行 `python3 test/04_test_backend_chat.py` 可稳定建立 SSE 连接并输出总结内容
+
+## 2026-02-26: 知识库删除功能修复
+**操作目的**:
+修复知识库删除操作无法生效的问题（前端显示删除但刷新后恢复，后端无报错但实际未删除）。
+
+**问题分析**:
+1.  **现象**: 用户反馈删除知识库后，文件和知识库依然存在。
+2.  **原因**: `RagFlowClient.java` 中 `deleteDataset` 方法使用了错误的 API 路径 `DELETE /api/v1/datasets/{id}`。
+    *   RAGFlow 返回 `200 OK`，但在响应体中包含错误信息 `{"message": "Method Not Allowed"}`，导致后端误判为成功。
+    *   正确的 API 路径应为 `DELETE /api/v1/datasets`，且需要在请求体中传递 `{"ids": ["..."]}`。
+
+**解决方案**:
+1.  **后端 (Backend)**:
+    *   修正 `RagFlowClient.java` 中的 `deleteDataset` 方法，改为使用 `HTTP DELETE` 方法请求 `/api/v1/datasets`，并在 Body 中传递 ID 列表。
+2.  **验证**:
+    *   编写专项测试脚本 `test_delete_non_empty.py` 复现问题并验证修复结果。
+    *   验证脚本确认修复后知识库及其包含的文档均被正确删除。
+
+**结果**:
+*   知识库删除功能恢复正常，后端与 RAGFlow 状态同步一致。
+
+## 2026-02-26: 知识库文件计数显示修复
+**操作目的**:
+修复前端知识库卡片中“全部文件”显示为 0 的问题。
+
+**问题分析**:
+1.  **现象**: 用户反馈知识库管理列表中，所有知识库的“全部文件”均显示为 0，但点击进入详情页后可以看到文件。
+2.  **原因**: 前端 `DatasetCard` 组件使用 `document_count` 字段读取文件数，但 RAGFlow API 返回的字段名为 `doc_count`。
+
+**解决方案**:
+1.  **前端 (Frontend)**:
+    *   修改 `DatasetList.jsx` 中的 `DatasetCard` 组件，将字段引用从 `document_count` 更正为 `doc_count`。
+2.  **验证**:
+    *   通过 `curl` 确认 RAGFlow API 返回的 JSON 结构确实包含 `doc_count`。
+    *   重建前端容器后，界面应能正确显示文件数量。
+
+**结果**:
+*   知识库列表中的文件计数显示恢复正常。
+
+## 2026-02-26: 修复文件上传413错误与解析按钮无响应问题
+**操作人**: AI Assistant (Trae IDE)
+**背景**:
+用户反馈两个问题：
+1. 上传文件时报错 `413 (Request Entity Too Large)`。
+2. 点击解析按钮无响应，无法解析文件。
+
+**问题分析与解决**:
+1. **文件上传 413 错误**:
+   - **原因**: Nginx (前端与 RAGFlow) 及 Spring Boot 后端默认限制了请求体大小（通常为 1M 或 10M），无法满足大文件上传需求。
+   - **解决**:
+     - 修改 `frontend/nginx.conf` 和 `deploy/nginx/ragflow.conf`，设置 `client_max_body_size 500M;`。
+     - 修改 `backend/src/main/resources/application.yml`，设置 `spring.servlet.multipart.max-file-size` 和 `max-request-size` 为 `500MB`。
+     - 修改 `WebClientConfig.java`，增加 `maxInMemorySize(500 * 1024 * 1024)` 以支持大文件传输。
+
+2. **解析按钮无响应 (RAGFlow API 405)**:
+   - **原因**: 后端 `RagFlowClient.java` 使用了错误的 API 端点 `POST /api/v1/datasets/{id}/documents/run` 来触发解析。该端点是为前端设计的，不支持 API Key 调用（返回 `405 Method Not Allowed`，但状态码为 200，导致后端未抛出异常）。
+   - **解决**:
+     - 查阅代码与文档发现，正确的 API/SDK 触发解析端点为 `POST /api/v1/datasets/{id}/chunks`，Body 为 `{"document_ids": ["..."]}`。
+     - 修改 `RagFlowClient.java` 中的 `runDocuments` 方法适配该端点。
+
+**验证**:
+- **上传**: 配置已更新并重启容器。
+- **解析**: 编写 `deploy/test_parsing.py` 脚本验证。
+  - 修复前：API 返回 `{"code":100, "message": "<MethodNotAllowed...>"}`。
+  - 修复后：API 返回 `{"code":0}`（成功）或 `{"code":102, "message": "...processing"}`（任务已在运行），且文档状态正确变更为 `RUNNING`。
+
+**结论**:
+- 上传限制已放宽至 500MB。
+- 解析功能已修复，点击按钮可正常触发 RAGFlow 解析任务。

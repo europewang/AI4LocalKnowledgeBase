@@ -161,6 +161,19 @@ services:
       - ragflow
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: ragflow-frontend
+    ports:
+      - "8086:80"
+    depends_on:
+      - backend
+    networks:
+      - ragflow
+    restart: unless-stopped
+
 networks:
   ragflow:
     name: ragflow_ragflow

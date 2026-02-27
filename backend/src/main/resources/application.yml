@@ -12,6 +12,10 @@ spring:
     password: infini_rag_flow
   main:
     allow-bean-definition-overriding: true
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml
@@ -26,6 +30,13 @@ ragflow:
   # This API Key should be a system-level admin key for RAGFlow
   # You can get it from RAGFlow UI or database
   api-key: ${RAGFLOW_API_KEY:ragflow-system-admin-key}
+
+# Processor Configuration (Phase 2 Extensibility)
+ai4kb:
+  processor:
+    # Options: "rag" (default, calls RAGFlow), "agent" (mock for Phase 2)
+    mode: ${PROCESSOR_MODE:rag}
+
 
 logging:
   level:

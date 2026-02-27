@@ -162,3 +162,84 @@ RAGFlow 的 Docker 架构中：
 *   **稳妥做法**: 
     *   外部测试用宿主机 IP:8084
     *   内部测试（如在容器内）直接访问 `http://127.0.0.1:9380` 绕过 Nginx 验证（如果后端绑定了 0.0.0.0）。
+
+## 2026-02-04: RAGFlow PDF 解析自动化与 API 避坑指南 (终极版)
+
+### 1. 核心痛点：API 触发解析为何总是 401/404？
+尝试通过 API Key 调用 `/api/v1/document/run` 或 `/api/v1/datasets/.../run` 触发解析时，常遇到鉴权失败或路径不存在。
+*   **根本原因**: RAGFlow 的前端 API (`document_app.py`) 依赖 Session/Cookie (`@login_required`)，不支持 API Key。
+*   **误区**: 不要死磕 `/run` 相关的 REST 路径，那是给浏览器用的。
+
+### 2. 正确解决方案：使用 SDK 专用端点
+RAGFlow 为 SDK (`doc.py`) 提供了独立端点，支持 `Authorization: Bearer <API_KEY>`。
+
+*   **API 端点**: `POST /api/v1/datasets/{dataset_id}/chunks`
+*   **关键参数**:
+    *   Headers: `Authorization: Bearer <API_KEY>`
+    *   Body: `{"document_ids": ["<doc_id>"]}`
+*   **隐蔽逻辑**: 虽然端点名为 `/chunks`，但 POST 请求实际执行的是 **"Start Parsing" (启动解析任务)**。调用成功后，文档状态会从 `UNSTART` (0) 变为 `RUNNING` (1)。
+
+### 3. 自动化验证脚本 (`backend/test/03_e2e_pdf_verify.py`)
+我们已实现从“建库”到“问答”的全链路自动化脚本，包含以下关键处理：
+
+1.  **状态轮询 (Polling)**:
+    *   触发解析后，轮询 `/api/v1/datasets/{id}/documents`。
+    *   **坑**: 状态字段 `run_status` 可能是字符串 "1" 也可能是数字 1，代码需兼容。
+    *   **目标状态**: 等待状态变为 `'3'` (DONE) 且 `chunk_count > 0`。
+
+2.  **权限授予**:
+    *   若使用非 Admin 账号调用 Chat API，必须先调 `/api/v1/datasets/{id}/collaborations` 授予权限，否则报 403。
+
+3.  **响应结构兼容**:
+    *   API 返回的数据结构有时是 `{data: [...]}`，有时是 `{data: {data: [...]}}`，解析时需防御性编程。
+
+### 4. 产出工具
+*   **全流程验证**: `python3 backend/test/03_e2e_pdf_verify.py`
+*   **状态诊断**: `python3 scripts/check_pdf_status.py` (快速查看解析进度)
+
+
+## 2026-02-26：Admin端文档管理功能增强与文件查看实现
+
+写入时间：2026-02-26 12:05
+
+## 2026-02-26：Admin端文档管理功能增强与文件查看实现
+
+### 典型现象
+1. 知识库管理Tab中，新建知识库无法直接上传文件。
+2. 删除知识库后，前端列表未刷新，后端已删除。
+3. 知识库列表仅显示"Docs: 0"，不显示实际文件数。
+4. 点击知识库进入详情页后，无法查看文件内容（PDF/文本），且未解析的文件缺乏解析触发入口。
+5. 上传文件时报 415 Unsupported Media Type 错误。
+6. 获取文件内容时报 500 错误（RAGFlow API 路径不明确）。
+
+### 核心判断思路
+1. **上传/解析/查看缺失**：AdminController 和 RagFlowClient 缺乏对应的文档操作接口，需对齐 RAGFlow API。
+2. **删除状态不同步**：前端删除操作未等待后端完成或未正确处理异步状态，需引入乐观更新 (Optimistic Update) 和延时刷新。
+3. **Docs 显示为 0**：列表接口返回的 `doc_count` 字段可能未正确映射或 RAGFlow 返回结构变更。
+4. **415 错误**：Spring WebFlux `FilePart` 与 `MultipartFile` 处理方式不同，RAGFlow 客户端需要正确的 Multipart 请求构建。
+5. **500 错误**：RAGFlow 文件下载路径非标准 REST 路径，需尝试 `/api/v1/document/file/{dataset_id}/{doc_id}` 或类似路径，并增加容错回退。
+
+### 关键动作与命令
+1. **后端增强**：
+   - `RagFlowClient.java`: 新增 `runDocuments` (解析), `getDocumentFile` (下载/查看), 修正 `uploadDocument` 使用 `MultipartFile`。
+   - `AdminController.java`: 暴露 `/datasets/{id}/documents/run` 和 `/datasets/{id}/documents/{docId}/file` 接口。
+   - 修复删除接口参数：RAGFlow 删除接口需要 `ids` 列表，前端传递 `ids`，后端需正确映射。
+2. **前端优化**：
+   - `DatasetManager`: 实现乐观更新删除逻辑，增加 `setTimeout` 确保后端处理完成后刷新。
+   - `DatasetCard`: 显示 `dataset.doc_count` 而非硬编码，改为 "全部文件"。
+   - `DatasetDetail`: 新增 "解析" 按钮（调用 `runDocuments`），新增 "查看" 按钮（调用 `getDocumentFile` 并通过 Blob URL 预览）。
+   - PDF 预览：使用 `<iframe src={blobUrl} />` 进行简易预览。
+3. **验证脚本**：
+   - `test_admin_backend.py`: 覆盖创建 -> 上传 -> 列表 -> 解析 -> 查看 -> 删除 全流程验证。
+
+### 根因与解决方案
+1. **上传 415**：原 `FilePart` 实现未正确设置 Content-Type，改为 `MultipartFile` 并使用 `MultipartBodyBuilder` 解决。
+2. **文件查看失败**：RAGFlow 文件下载路径未公开文档化，经调试确认为 `/api/v1/document/file/{dataset_id}/{doc_id}`（需进一步验证，当前通过 fallback 机制处理）。
+3. **删除延迟**：RAGFlow 删除操作可能为异步，前端需增加延时刷新或轮询机制。
+
+### 验收标准
+1. Admin 界面可新建知识库并上传文件。
+2. 知识库卡片显示正确的文件数量。
+3. 进入详情页可点击 "解析" 触发 RAGFlow 解析任务。
+4. 点击 "查看" 可在模态框中预览 PDF 或文本内容。
+5. 删除知识库后，列表立即移除该项，且刷新后不再出现。
