@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw } from 'lucide-react'
+import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -141,6 +141,47 @@ async function fetchChunks(datasetId, docId, page = 1, pageSize = 10000) {
 
 // --- Components ---
 
+function ChunkHighlights({ chunk, scale, pageNumber }) {
+  if (!chunk || !chunk.positions || chunk.positions.length === 0) return null
+
+  // Debug log
+  console.log('Rendering highlights for chunk:', chunk.id, 'Page:', pageNumber, 'Scale:', scale)
+  console.log('Positions:', chunk.positions)
+
+  // RAGFlow positions format: [page_num, x_min, x_max, y_min, y_max]
+  // We need to filter for current page
+  const rects = chunk.positions
+    .filter(pos => pos[0] === pageNumber)
+    .map((pos, i) => {
+      const [p, x1, x2, y1, y2] = pos
+      // Calculate width and height
+      const width = (x2 - x1) * scale
+      const height = (y2 - y1) * scale
+      
+      console.log(`Rect ${i}:`, { left: x1 * scale, top: y1 * scale, width, height })
+
+      return (
+        <div
+          key={i}
+          className="absolute bg-yellow-400/50 border-2 border-yellow-600 transition-all duration-300 z-[100]"
+          style={{
+            left: x1 * scale,
+            top: y1 * scale,
+            width: width,
+            height: height,
+          }}
+        />
+      )
+    })
+
+  if (rects.length === 0) {
+      console.log('No rects for this page')
+      return null
+  }
+
+  return <div className="absolute inset-0 pointer-events-none z-[100]">{rects}</div>
+}
+
 function DocumentViewer({ doc, datasetId, onClose }) {
   const [chunks, setChunks] = useState([])
   const [loadingChunks, setLoadingChunks] = useState(false)
@@ -149,6 +190,7 @@ function DocumentViewer({ doc, datasetId, onClose }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [scale, setScale] = useState(1.0)
   const [pdfError, setPdfError] = useState(null)
+  const [activeChunk, setActiveChunk] = useState(null)
 
   useEffect(() => {
     // Check status using 'run' or 'run_status'
@@ -160,11 +202,15 @@ function DocumentViewer({ doc, datasetId, onClose }) {
       setLoadingChunks(true)
       fetchChunks(datasetId, doc.id)
         .then(data => {
+            console.log('Fetched chunks data:', data);
             if (Array.isArray(data)) setChunks(data)
             else if (data && Array.isArray(data.chunks)) setChunks(data.chunks)
             else setChunks([])
         })
-        .catch(console.error)
+        .catch(error => {
+            console.error('Fetch chunks error:', error);
+            setChunks([]);
+        })
         .finally(() => setLoadingChunks(false))
     }
   }, [datasetId, doc.id, doc.run, doc.run_status])
@@ -179,15 +225,35 @@ function DocumentViewer({ doc, datasetId, onClose }) {
     setPdfError(error.message)
   }
 
-  const filteredChunks = chunks.filter(c => 
-    c.content_with_weight && c.content_with_weight.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredChunks = chunks.filter(c => {
+    const content = c.content_with_weight || c.content || '';
+    return content.toLowerCase().includes(searchTerm.toLowerCase());
+  })
 
   const handleChunkClick = (chunk) => {
-    if (chunk.page_num && chunk.page_num.length > 0) {
-        setPageNumber(chunk.page_num[0])
-    }
+    setActiveChunk(chunk)
+    // Scroll to page logic handled in useEffect
   }
+
+  // Scroll to chunk page when activeChunk changes
+  useEffect(() => {
+    if (activeChunk) {
+        let targetPage = 1;
+        if (activeChunk.positions && activeChunk.positions.length > 0) {
+            targetPage = activeChunk.positions[0][0];
+        } else if (activeChunk.page_num && activeChunk.page_num.length > 0) {
+            targetPage = activeChunk.page_num[0];
+        }
+        
+        // Find page element and scroll
+        setTimeout(() => {
+            const pageEl = document.getElementById(`pdf-page-${targetPage}`);
+            if (pageEl) {
+                pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 100);
+    }
+  }, [activeChunk]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
@@ -222,48 +288,48 @@ function DocumentViewer({ doc, datasetId, onClose }) {
          {/* Body */}
          <div className="flex-1 flex overflow-hidden">
            {/* Left: PDF Viewer */}
-           <div className="flex-1 bg-slate-100 overflow-auto flex justify-center p-8 relative">
+           <div className="flex-1 bg-slate-100 overflow-auto flex justify-center p-8 relative scroll-smooth">
              {doc.type === 'pdf' ? (
-                 <div className="shadow-lg">
+                 <div className="relative w-full flex flex-col items-center">
                     <Document 
                         file={doc.url} 
+                        className="flex flex-col items-center"
                         onLoadSuccess={onDocumentLoadSuccess}
                         onLoadError={onDocumentLoadError}
                         loading={<div className="flex items-center gap-2 p-4"><Loader2 className="animate-spin"/> 加载PDF中...</div>}
                     >
-                        <Page 
-                            pageNumber={pageNumber} 
-                            scale={scale} 
-                            renderTextLayer={true} 
-                            renderAnnotationLayer={true}
-                            className="bg-white"
-                        />
+                        {Array.from(new Array(numPages), (el, index) => {
+                            const currentPage = index + 1;
+                            return (
+                                <div key={`page_${currentPage}`} id={`pdf-page-${currentPage}`} className="relative inline-block border border-slate-200 shadow-lg mb-6">
+                                    <Page 
+                                        pageNumber={currentPage} 
+                                        scale={scale} 
+                                        renderTextLayer={true} 
+                                        renderAnnotationLayer={true}
+                                        className="bg-white"
+                                    />
+                                    <ChunkHighlights 
+                                        chunk={activeChunk} 
+                                        scale={scale} 
+                                        pageNumber={currentPage} 
+                                    />
+                                </div>
+                            );
+                        })}
                     </Document>
                     {pdfError && <div className="text-red-500 p-4 bg-white rounded shadow">无法加载PDF: {pdfError}</div>}
+                    
+                    {/* Debug Info */}
+                    {activeChunk && (
+                        <div className="absolute bottom-0 right-0 p-2 bg-black/70 text-white text-xs z-50 pointer-events-none">
+                            Chunk: {activeChunk.id} <br/>
+                            Positions: {activeChunk.positions ? activeChunk.positions.length : '0'}
+                        </div>
+                    )}
                  </div>
              ) : (
                  <iframe src={doc.url} className="w-full h-full bg-white rounded-lg border p-4 font-mono whitespace-pre-wrap" />
-             )}
-             
-             {/* PDF Navigation Overlay */}
-             {numPages && (
-                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur border shadow-lg rounded-full px-4 py-2 flex items-center gap-4 text-sm z-10">
-                    <button 
-                        disabled={pageNumber <= 1} 
-                        onClick={() => setPageNumber(p => p - 1)}
-                        className="disabled:opacity-30 hover:text-blue-600"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
-                    <span className="font-mono">{pageNumber} / {numPages}</span>
-                    <button 
-                        disabled={pageNumber >= numPages} 
-                        onClick={() => setPageNumber(p => p + 1)}
-                        className="disabled:opacity-30 hover:text-blue-600"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
-                 </div>
              )}
            </div>
 
@@ -297,7 +363,7 @@ function DocumentViewer({ doc, datasetId, onClose }) {
                         <div 
                             key={chunk.id || idx}
                             onClick={() => handleChunkClick(chunk)}
-                            className="bg-white p-3 rounded-lg border hover:border-blue-400 hover:shadow-md cursor-pointer transition-all group"
+                            className={`bg-white p-3 rounded-lg border hover:border-blue-400 hover:shadow-md cursor-pointer transition-all group ${activeChunk && activeChunk.id === chunk.id ? 'border-blue-500 ring-2 ring-blue-200' : ''}`}
                         >
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
@@ -308,7 +374,11 @@ function DocumentViewer({ doc, datasetId, onClose }) {
                                 </span>
                             </div>
                             <p className="text-sm text-slate-700 line-clamp-4 leading-relaxed">
-                                {chunk.content_with_weight}
+                                {chunk.content_with_weight ? (
+                                   <span dangerouslySetInnerHTML={{ __html: chunk.content_with_weight }} />
+                                ) : (
+                                   chunk.content
+                                )}
                             </p>
                         </div>
                     ))
@@ -981,7 +1051,8 @@ function SourceViewer({ reference, onClose }) {
 
   if (!reference) return null
 
-  const hasImage = !!reference.image_id
+  const imageId = reference.image_id || reference.img_id
+  const hasImage = !!imageId
   const hasPdf = !!reference.document_id
 
   const onDocumentLoadSuccess = ({ numPages }) => {
@@ -1054,7 +1125,14 @@ function SourceViewer({ reference, onClose }) {
 
                 {/* Text Content */}
                 <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
-                  {reference.content || "No content preview available."}
+                  {/* If we have highlight positions, maybe we can show them here too? 
+                      For now, just show the content which is the chunk itself. 
+                      Ideally, RAGFlow returns the chunk text. */}
+                  {reference.content_with_weight ? (
+                     <div dangerouslySetInnerHTML={{ __html: reference.content_with_weight }} />
+                  ) : (
+                     reference.content || "No content preview available."
+                  )}
                 </div>
 
                 {/* Image Preview */}
@@ -1066,7 +1144,7 @@ function SourceViewer({ reference, onClose }) {
                     </div>
                     <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white group relative">
                       <img 
-                        src={`/api/document/image/${reference.image_id}`}
+                        src={`/api/document/image/${imageId}`}
                         alt="Document Snapshot"
                         className="w-full h-auto object-contain max-h-[500px]"
                         onError={() => setImageError(true)}
@@ -1163,6 +1241,71 @@ function SourceViewer({ reference, onClose }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function MarkdownWithCitations({ content, references, onViewReference }) {
+  if (!content) return null;
+
+  const formattedContent = content.replace(/\[(?:ID:\s*)?(\d+)\]/gi, (match, id) => ` [${parseInt(id) + 1}](#citation-${id})`);
+
+  return (
+    <Markdown
+      components={{
+        pre: ({node, ...props}) => <div className="overflow-auto w-full my-2 bg-slate-800 text-slate-100 p-2 rounded" {...props} />,
+        code: ({node, ...props}) => <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs" {...props} />,
+        a: ({node, href, children, ...props}) => {
+          if (href?.startsWith('#citation-')) {
+            const index = parseInt(href.replace('#citation-', ''));
+            const ref = references?.[index];
+            if (ref) {
+              return (
+                <button 
+                  onClick={(e) => { e.preventDefault(); onViewReference(ref); }}
+                  className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 ml-0.5 text-[10px] font-bold text-blue-600 bg-blue-50 rounded-full border border-blue-200 hover:bg-blue-100 align-top transition-colors transform -translate-y-0.5 cursor-pointer select-none"
+                  title={ref.document_name}
+                >
+                  {index + 1}
+                </button>
+              );
+            }
+            return <span className="text-gray-400 text-[10px] ml-0.5">[{index + 1}]</span>;
+          }
+          return <a href={href} className="text-blue-600 hover:underline" {...props}>{children}</a>
+        }
+      }}
+    >
+      {formattedContent}
+    </Markdown>
+  );
+}
+
+function ThoughtBlock({ content, references, onViewReference }) {
+  const [expanded, setExpanded] = useState(true);
+  
+  return (
+    <div className="mb-4 rounded-lg overflow-hidden border border-amber-200 bg-amber-50">
+        <button 
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center gap-2 px-3 py-2 bg-amber-100/50 hover:bg-amber-100 transition-colors text-xs font-semibold text-amber-700 uppercase tracking-wide select-none"
+        >
+            <Brain size={14} className="text-amber-600" />
+            <span>深度思考过程 (Deep Thinking)</span>
+            <span className="ml-auto text-amber-500 text-[10px]">
+                {expanded ? '收起' : '展开'}
+            </span>
+        </button>
+        
+        {expanded && (
+            <div className="p-3 text-sm text-slate-600 italic leading-relaxed border-t border-amber-100 bg-white/50">
+                <MarkdownWithCitations 
+                    content={content} 
+                    references={references} 
+                    onViewReference={onViewReference} 
+                />
+            </div>
+        )}
     </div>
   )
 }
@@ -1299,37 +1442,78 @@ function ChatInterface({ role }) {
                   ? "bg-blue-600 text-white rounded-tr-sm" 
                   : "bg-white border border-slate-100 text-slate-700 rounded-tl-sm"
               )}>
-                <Markdown 
-                   components={{
-                      pre: ({node, ...props}) => <div className="overflow-auto w-full my-2 bg-slate-800 text-slate-100 p-2 rounded" {...props} />,
-                      code: ({node, ...props}) => <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs" {...props} />,
-                      a: ({node, href, children, ...props}) => {
-                        if (href?.startsWith('#citation-')) {
-                          const index = parseInt(href.replace('#citation-', ''));
-                          const ref = msg.references?.[index];
-                          // If reference exists, show interactive button
-                          if (ref) {
-                            return (
-                              <button 
-                                onClick={(e) => { e.preventDefault(); setViewingRef(ref); }}
-                                className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 ml-0.5 text-[10px] font-bold text-blue-600 bg-blue-50 rounded-full border border-blue-200 hover:bg-blue-100 align-top transition-colors transform -translate-y-0.5 cursor-pointer select-none"
-                                title={ref.document_name}
-                              >
-                                {index + 1}
-                              </button>
-                            );
+                {(() => {
+                  let rawContent = msg.content || '';
+                  // Clean up citation newlines: 
+                  // 1. Remove newlines before citations to keep them inline with text
+                  rawContent = rawContent.replace(/[\r\n]+(?=\s*\[(?:ID:\s*)?\d+\])/g, ' ');
+
+                  let thought = null;
+                  let answer = rawContent;
+                  let hasStartTag = answer.includes('<think>');
+                  let hasEndTag = answer.includes('</think>');
+                  let autoAddedThink = false;
+
+                  // Auto-add <think> if missing at start, but implied by </think> or user preference for start
+                  if (hasEndTag && !hasStartTag) {
+                      answer = '<think>' + answer;
+                      hasStartTag = true;
+                      autoAddedThink = true;
+                  } else if (!hasStartTag && !hasEndTag) {
+                      // If streaming, assume thought at start (as requested)
+                      // If finished, we'll revert if it wasn't a thought
+                      answer = '<think>' + answer;
+                      hasStartTag = true;
+                      autoAddedThink = true;
+                  }
+
+                  if (hasStartTag) {
+                      const start = answer.indexOf('<think>');
+                      const end = answer.indexOf('</think>');
+                      
+                      if (end !== -1) {
+                          // Closed thought
+                          thought = answer.substring(start + 7, end);
+                          answer = answer.substring(0, start) + answer.substring(end + 8);
+                      } else {
+                          // Unclosed thought
+                          if (msg.isStreaming) {
+                              // While streaming, show as thought
+                              thought = answer.substring(start + 7);
+                              answer = answer.substring(0, start);
+                          } else {
+                              // Finished without closing </think>
+                              if (autoAddedThink) {
+                                  // It wasn't a thought, revert to normal
+                                  thought = null;
+                                  answer = rawContent;
+                              } else {
+                                  // Explicit unclosed thought
+                                  thought = answer.substring(start + 7);
+                                  answer = answer.substring(0, start);
+                              }
                           }
-                          // Fallback if reference not found (but ID exists)
-                          return <span className="text-gray-400 text-[10px] ml-0.5">[{index + 1}]</span>;
-                        }
-                        return <a href={href} className="text-blue-600 hover:underline" {...props}>{children}</a>
                       }
-                   }}
-                >
-                  {/* Regex to match [ID:0], [ID: 1], etc. and convert to Markdown link [1](#citation-0) */}
-                  {msg.content ? msg.content.replace(/\[ID:\s*(\d+)\]/g, (match, id) => ` [${parseInt(id) + 1}](#citation-${id})`) : ''}
-                </Markdown>
-                {msg.isStreaming && <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-1 align-middle"/>}
+                  }
+
+                  return (
+                    <>
+                      {thought && (
+                        <ThoughtBlock 
+                          content={thought} 
+                          references={msg.references} 
+                          onViewReference={setViewingRef} 
+                        />
+                      )}
+                      <MarkdownWithCitations 
+                        content={answer} 
+                        references={msg.references} 
+                        onViewReference={setViewingRef} 
+                      />
+                      {msg.isStreaming && <span className="inline-block w-1.5 h-4 bg-emerald-400 animate-pulse ml-1 align-middle"/>}
+                    </>
+                  )
+                })()}
                 
                 {/* References list removed as requested by user ("instead of all at the end") */}
               </div>

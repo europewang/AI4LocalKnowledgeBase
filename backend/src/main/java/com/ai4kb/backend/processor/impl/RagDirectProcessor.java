@@ -174,6 +174,11 @@ public class RagDirectProcessor implements ChatProcessor {
                             JsonNode reference = delta.path("reference");
                             if (reference.isMissingNode() || reference.isNull()) {
                                 reference = null;
+                            } else {
+                                // Normalize reference to be an array of chunks
+                                if (reference.has("chunks") && reference.get("chunks").isArray()) {
+                                    reference = reference.get("chunks");
+                                }
                             }
                             
                             if (!text.isEmpty() || reference != null) {
@@ -210,6 +215,9 @@ public class RagDirectProcessor implements ChatProcessor {
         if (choices.isArray() && !choices.isEmpty()) {
             JsonNode ref = choices.get(0).path("message").path("reference");
             if (!ref.isMissingNode() && !ref.isNull()) {
+                if (ref.has("chunks") && ref.get("chunks").isArray()) {
+                    return ref.get("chunks");
+                }
                 return ref;
             }
         }

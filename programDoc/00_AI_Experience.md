@@ -243,3 +243,77 @@ RAGFlow 为 SDK (`doc.py`) 提供了独立端点，支持 `Authorization: Bearer
 3. 进入详情页可点击 "解析" 触发 RAGFlow 解析任务。
 4. 点击 "查看" 可在模态框中预览 PDF 或文本内容。
 5. 删除知识库后，列表立即移除该项，且刷新后不再出现。
+## 2026-02-28: 修复 Xinference 模型加载 Connection Reset 与 RAGFlow GENERIC_ERROR
+
+**问题现象**:
+1.  RAGFlow 界面报错 `ERROR: GENERIC_ERROR - An error occurred during streaming`。
+2.  后台日志显示 `openai.APIError: An error occurred during streaming`，深层原因为 `ConnectionRefusedError: [Errno 111] Connection refused`。
+3.  重启 Xinference 后，加载模型（bge-m3, bge-reranker-v2-m3, deepseek-r1-distill-qwen-14b）时报错 `ConnectionResetError(104, 'Connection reset by peer')`，导致模型无法启动。
+4.  Xinference 日志显示尝试连接 HuggingFace (`cas-bridge.xethub.hf.co`) 超时。
+
+**原因分析**:
+1.  **GENERIC_ERROR**: RAGFlow 容器无法连接到 Xinference 服务（端口 8085），通常是因为 Xinference 挂了或者模型没加载起来。
+2.  **Connection Reset**: Xinference 在启动模型时，默认尝试联网检查或下载模型文件。由于网络环境限制（无法连接 HuggingFace），导致连接被重置或超时，进而导致模型启动失败。即便本地有模型文件，Xinference 默认行为仍可能触发联网检查。
+
+**解决方案**:
+1.  **强制离线模式**: 在 `docker-compose-xinference.yml` 中添加环境变量，强制 HuggingFace 相关库使用离线模式，避免联网检查：
+    ```yaml
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    ```
+2.  **缓存清理与软链接**:
+    *   发现 Xinference 缓存目录 (`/root/.xinference/cache/v2`) 下存在无效的空文件夹或错误结构。
+    *   删除无效缓存：`rm -rf /root/.xinference/cache/v2/bge-m3-pytorch-none ...`
+    *   (可选但推荐) 手动创建软链接指向挂载的模型目录，确保 Xinference 能找到本地模型：
+        `ln -s /models/bge-m3 /root/.xinference/cache/v2/bge-m3-pytorch-none`
+3.  **重启服务**: 重建 Xinference 容器以应用环境变量。
+4.  **重新加载模型**: 使用 `launch_xinference_models.py` 脚本重新加载模型。
+
+**验证方法**:
+1.  在 RAGFlow 容器内运行测试脚本 `test_ragflow_stream_v2.py`，模拟流式对话。
+2.  看到 `Stream started. Receiving chunks:` 并输出模型回复，确认为 `Stream finished successfully`。
+
+## 2026-03-02：解决 Xinference DeepSeek-R1-14B 4-bit 量化 OOM 与 Model Family 校验问题
+
+写入时间：2026-03-02 15:08
+
+### 典型现象
+1. RAGFlow 调用模型报错 `GENERIC_ERROR - An error occurred during streaming`。
+2. Xinference 日志显示 `torch.OutOfMemoryError: CUDA out of memory`，提示尝试分配 1.45 GiB 但显存不足（总 31GB，已用 24GB）。
+3. 使用 `xinference launch` 命令行启动时，若指定 `--model-name qwen2.5-instruct` 和 `--model-uid deepseek-r1-distill-qwen-14b`，会报 `Model not found`（因为内置库无此组合）。
+4. 自定义注册模型时，若 `model_family` 设为自定义名称（如 `deepseek-r1-distill-qwen`），RAGFlow 可能会因为该 family 不在支持的 tool-call 列表中而报错，或者 Xinference 校验失败。
+
+### 核心判断思路
+1. **显存占用异常**：14B 模型 4-bit 量化应占用约 8-9GB 显存。实际占用 22GB+ 说明量化未生效，可能是以 FP16 加载。
+2. **注册配置问题**：Xinference v2 注册配置需要严格遵循 `CustomLLMFamilyV2` 规范。
+3. **量化参数传递**：仅在 `model_specs` 中设置 `quantization: "4-bit"` 可能不足以触发 `bitsandbytes` 加载，需要在 `launch_model` 时显式传递 `quantization_config`。
+
+### 关键动作与命令
+1. **编写注册脚本**：使用 `xinference.client` Python SDK 进行注册和启动，比命令行更灵活。
+2. **强制 4-bit 量化**：
+   ```python
+   client.launch_model(
+       ...,
+       quantization="4-bit",
+       quantization_config={"load_in_4bit": True, "bnb_4bit_compute_dtype": "float16"}
+   )
+   ```
+3. **选择正确的 Model Family**：
+   对于 DeepSeek-R1-Distill-Qwen，应继承 `qwen2.5-instruct` family，以获得正确的 prompt template 和 tool calling 支持。
+   ```json
+   "model_family": "qwen2.5-instruct"
+   ```
+
+### 根因与解决方案
+- **根因**：
+  1. `xinference launch` 默认不包含 bitsandbytes 量化配置，导致模型以 FP16 加载，超出显存。
+  2. 自定义模型注册时 `model_family` 设置不当，导致功能受限或校验失败。
+- **解决方案**：
+  编写 Python 脚本 `register_and_launch_v2.py`，注册时指定 `model_family="qwen2.5-instruct"`，启动时显式传入 `quantization_config={"load_in_4bit": True}`。
+
+### 验收标准
+1. `curl http://localhost:8085/v1/models` 返回模型状态，且 `quantization` 为 `4-bit`。
+2. `nvidia-smi` 显示模型进程显存占用在合理范围（约 12-13GB for 14B model）。
+3. RAGFlow 对话测试（`debug_ragflow_stream.py`）能正常流式输出并包含 reasoning 内容（`<think>` 标签）。
+

@@ -1,0 +1,13 @@
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/BackendApplication.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/entity/User.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/controller/DocumentController.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/mapper/PermissionMapper.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/processor/impl/RagDirectProcessor.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/entity/Permission.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/client/RagFlowClient.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/config/WebClientConfig.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/processor/ChatProcessor.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/mapper/UserMapper.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/processor/impl/MockAgentProcessor.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/controller/AdminController.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/controller/ChatController.java

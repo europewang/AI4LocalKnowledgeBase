@@ -37,6 +37,9 @@ def test_chat_completions():
                                 break
                             try:
                                 data = json.loads(json_str)
+                                if "reference" in data and data["reference"]:
+                                    ref_json = data["reference"]
+                                    print(f"\n[INFO] FOUND REFERENCE: {json.dumps(ref_json, indent=2, ensure_ascii=False)}")
                                 answer = data.get("answer", "")
                                 if answer:
                                     sys.stdout.write(answer)

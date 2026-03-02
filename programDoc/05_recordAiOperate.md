@@ -709,3 +709,122 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 **结论**:
 - 上传限制已放宽至 500MB。
 - 解析功能已修复，点击按钮可正常触发 RAGFlow 解析任务。
+
+## 2026-03-02 PDF 切片功能增强：高亮与列表修复
+
+### 1. 问题描述
+1.  **切片列表显示空白**：在 Admin 界面的知识库管理中，点击 PDF 文件查看切片列表时，显示“暂无切片数据”，尽管后端 API 返回了数据。
+2.  **PDF 高亮缺失**：用户点击切片列表中的某一项时，左侧 PDF 预览区域没有高亮显示对应的切片位置。
+
+### 2. 解决方案
+#### 前端 (`App.jsx`)
+1.  **切片内容显示修复**：
+    *   原因：RAGFlow 返回的切片数据中，部分字段可能为空（如 `content_with_weight`），导致前端判断逻辑失效。
+    *   修复：增加 `content` 字段的回退显示逻辑。当 `content_with_weight` 为空时，优先显示 `content` 字段。
+    *   搜索过滤：同时修正搜索过滤逻辑，确保 `content` 字段也被纳入搜索范围。
+
+2.  **PDF 切片高亮实现**：
+    *   **组件封装**：新增 `ChunkHighlights` 组件，专门负责在 PDF 页面上绘制高亮矩形。
+    *   **坐标转换**：解析 RAGFlow 返回的 `positions` 字段（格式：`[page_num, x_min, x_max, y_min, y_max]`），将其转换为相对于 PDF 页面的 CSS 坐标（`left`, `top`, `width`, `height`），并应用当前的缩放比例 `scale`。
+    *   **交互逻辑**：
+        *   在 `DocumentViewer` 中增加 `activeChunk` 状态。
+        *   点击切片列表项时，更新 `activeChunk`，并自动跳转到切片所在的页面（优先使用 `positions[0][0]`，其次使用 `page_num[0]`）。
+        *   高亮样式：使用半透明黄色背景 (`bg-yellow-300/40`) 和黄色边框，确保醒目且不遮挡文字。
+
+### 3. 验证
+*   **后端数据验证**：通过脚本 `backend/test/verify_chunk_positions.py`（原 `find_pdf_chunks.py`）验证 RAGFlow API 返回的切片数据中包含 `positions` 字段，且格式符合预期。
+*   **前端逻辑验证**：代码逻辑覆盖了坐标解析、页面跳转和样式渲染。
+
+### 4. 部署说明
+*   用户需重新构建或重启前端服务（视部署方式而定，本地开发环境通常自动生效）。
+
+## 2026-03-02: 深度思考显示优化与 PDF 高亮坐标系确认
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **深度思考 (Deep Thinking) 显示优化**:
+    *   **问题**: DeepSeek 模型输出的 `<think>` 标签有时缺失开始标签，导致无法正确进入思考模式样式；且未闭合时无法自动退出。
+    *   **修复**: 在 `App.jsx` 中增加自动补全逻辑。
+        *   检测到只有 `</think>` 而无 `<think>` 时，自动在头部补全 `<think>`。
+        *   检测到无任何标签但内容疑似思考过程时（根据上下文），自动包裹。
+        *   **样式优化**: 确保 `<think>` 内容以引用/灰色样式独立显示，与正文区分。
+    *   **引用格式修复**: 修复了引用来源 `[ID]` 前的换行问题，使用正则 `replace(/[\r\n]+(?=\s*\[(?:ID:\s*)?\d+\])/g, ' ')` 将其合并到一行。
+
+2.  **PDF 高亮坐标系确认**:
+    *   **验证**: 通过后端脚本抓取实际切片数据，分析 `positions` 字段。
+    *   **发现**: 切片 Y 坐标随文本阅读顺序递增（如 Chunk 1 Y=338, Chunk 2 Y=436），确认 RAGFlow 返回的 PDF 坐标系为 **Top-Left** 原点（与 PDF.js 默认一致）。
+    *   **结论**: 前端 `ChunkHighlights` 组件无需进行 Y 轴翻转，现有实现 `top: y1 * scale` 正确。
+
+**文件变更**:
+*   `frontend/src/App.jsx`: 增加 Deep Thinking 补全逻辑、引用换行修复 regex。
+*   `backend/test/verify_chunk_positions.py`: 临时验证脚本（已删除）。
+
+## 2026-03-02: PDF 高亮功能排查与增强
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **高亮组件调试增强**:
+    *   在 `ChunkHighlights` 组件中增加 `console.log` 输出，打印接收到的 `chunk`、`pageNumber`、`scale` 以及计算出的矩形坐标。
+    *   将高亮样式改为更显眼的 `bg-yellow-400/50` + `border-yellow-600`。
+    *   提升 `z-index` 至 `z-[100]`，确保高亮层覆盖在 PDF 画布和文本层之上。
+2.  **布局容器优化**:
+    *   将 `Page` 和 `ChunkHighlights` 的父容器改为 `relative inline-block`，确保容器尺寸严格包裹 PDF 页面内容，避免因容器塌陷导致高亮层定位错误。
+3.  **可视化调试信息**:
+    *   在 PDF 预览区域右下角增加临时的调试信息面板，实时显示当前选中的 `activeChunk.id`、`pageNumber` 和 `positions` 数量，帮助确认数据是否正确传递。
+
+**排查建议**:
+*   请用户重新加载页面后，点击切片列表。
+*   观察右下角是否有黑色半透明调试框出现。
+*   如果调试框出现且显示 `Positions: >0`，但仍无黄色高亮，说明是 CSS 定位问题（如 `top/left` 计算偏差或容器尺寸异常）。
+*   如果调试框未出现或 `Positions: 0`，说明数据未正确传递，需排查 `fetchChunks` 或 `handleChunkClick` 逻辑。
+
+## 2026-03-02: 重启 Frontend Docker 容器以应用更改
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **问题**: 修改 `frontend/src/App.jsx` 后，未重启/重建 Docker 容器，导致前端更改未生效。
+*   **修复**:
+    *   定位到 frontend 服务定义在 `deploy/docker-compose-ragflow.yml` 中。
+    *   执行 `sudo docker compose -f docker-compose-ragflow.yml build --no-cache frontend` 强制重建镜像（确保代码更改被 COPY）。
+    *   执行 `sudo docker compose -f docker-compose-ragflow.yml up -d frontend` 重启容器。
+*   **验证**: 容器 `ragflow-frontend` 已成功重建并运行（ID变更）。
+
+## 2026-03-02: PDF 连续滚动模式 (Continuous Scrolling) 实现
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 用户希望 PDF 预览不再是分页点击查看，而是连续滚动的模式。
+*   **实现**:
+    *   修改 `DocumentViewer` 组件，移除 `<Page>` 的单一分页逻辑。
+    *   使用 `Array.from(new Array(numPages))` 循环渲染所有页面，每个页面包裹在独立的 `div` 容器中。
+    *   **高亮适配**: 每个页面容器内都包含一个 `ChunkHighlights` 组件，并传入对应的 `pageNumber`，确保高亮能正确显示在对应的页面上。
+    *   **自动定位**: 当点击切片列表时，通过 `document.getElementById('pdf-page-X').scrollIntoView()` 实现平滑滚动跳转到目标页面。
+    *   **UI 调整**: 移除了底部的分页导航按钮，改为仅显示总页数。
+*   **部署**:
+    *   执行 `docker compose build --no-cache frontend` 重建镜像。
+    *   执行 `docker compose up -d frontend` 重启容器。
+
+## 2026-03-02: 移除 PDF 分页遮罩及修复居中问题
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 用户反馈 PDF 预览区域依然显示 "Total 24 Pages" 遮罩，且 PDF 页面靠左未居中。
+*   **修复**:
+    *   移除 `App.jsx` 中底部的 "Total X Pages" 悬浮遮罩代码。
+    *   修改 PDF 容器样式：
+        *   移除外层包裹 `div` 的 `shadow-lg`，避免整个容器显示阴影导致看起来像一张大白纸。
+        *   保留外层 `div` 的 `items-center` 和 `w-full`，确保内部 `inline-block` 的页面元素在 Flex 容器中水平居中。
+        *   将页面本身的阴影从 `shadow-sm` 增加为 `shadow-lg`，提升页面层次感。
+        *   增加页面间距 `mb-6` (原为 `mb-4`)。
+*   **部署**:
+    *   执行 `docker compose build --no-cache frontend` 重建镜像。
+    *   执行 `docker compose up -d frontend` 重启容器。
+
+## 2026-03-02: 修复 PDF 预览未居中问题
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 用户反馈 PDF 预览依然靠左，未居中。
+*   **分析**:
+    *   `react-pdf` 的 `Document` 组件默认渲染为块级元素 (div)，宽度占满父容器 (w-full)。
+    *   虽然父容器设置了 `items-center`，但 `Document` 容器本身是满宽的，其内部的 `Page` (设置为 inline-block) 默认靠左排列。
+*   **修复**:
+    *   在 `frontend/src/App.jsx` 中，给 `Document` 组件添加 `className="flex flex-col items-center"`。
+    *   这使得 `Document` 渲染的 div 变为 flex 容器，并强制其子元素 (Page) 水平居中。
+*   **部署**:
+    *   执行 `docker compose build --no-cache frontend` 重建镜像。
+    *   执行 `docker compose up -d frontend` 重启容器。
