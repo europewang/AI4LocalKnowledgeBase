@@ -134,7 +134,7 @@ services:
     volumes:
       - ragflow_logs:/ragflow/logs
       - ragflow_history_data_agent:/ragflow/history_data_agent
-      - ./nginx/ragflow.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/ragflow.conf:/etc/nginx/sites-enabled/default
     networks:
       - ragflow
     restart: on-failure
