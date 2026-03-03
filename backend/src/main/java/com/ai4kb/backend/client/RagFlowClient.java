@@ -217,7 +217,10 @@ public class RagFlowClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of(
                         "model", llmModel,
-                        "messages", List.of(Map.of("role", "user", "content", message)),
+                        "messages", List.of(
+                                Map.of("role", "system", "content", "你是一个智能助手。请始终用中文回答用户的问题。"),
+                                Map.of("role", "user", "content", message)
+                        ),
                         "stream", false,
                         "extra_body", Map.of("reference", true)
                 ))
@@ -241,7 +244,10 @@ public class RagFlowClient {
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .bodyValue(Map.of(
                         "model", llmModel,
-                        "messages", List.of(Map.of("role", "user", "content", message)),
+                        "messages", List.of(
+                                Map.of("role", "system", "content", "你是一个智能助手。请始终用中文回答用户的问题。"),
+                                Map.of("role", "user", "content", message)
+                        ),
                         "stream", true,
                         "extra_body", Map.of("reference", true)
                 ))

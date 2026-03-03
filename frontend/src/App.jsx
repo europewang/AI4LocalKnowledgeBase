@@ -1515,7 +1515,39 @@ function ChatInterface({ role }) {
                   )
                 })()}
                 
-                {/* References list removed as requested by user ("instead of all at the end") */}
+                {/* References list - Appended at the end as requested */}
+                {msg.references && msg.references.length > 0 && !msg.isStreaming && (
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <div className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1">
+                      <BookOpen size={14} />
+                      参考资料
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {msg.references.map((ref, i) => (
+                        <button 
+                          key={i}
+                          onClick={() => setViewingRef(ref)}
+                          className="flex items-start gap-2 p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-left transition-colors group"
+                        >
+                          <FileText size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-slate-700 group-hover:text-blue-700 truncate">
+                              {ref.document_name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                              <span className="bg-slate-200 px-1.5 rounded text-slate-600">
+                                {(ref.similarity * 100).toFixed(0)}%
+                              </span>
+                              <span className="truncate max-w-[200px]">
+                                {ref.content ? ref.content.slice(0, 50) + "..." : "No preview"}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}

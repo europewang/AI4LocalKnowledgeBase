@@ -9,7 +9,7 @@ HEADERS = {"Content-Type": "application/json"}
 def run_chat_debug():
     url = f"{BASE_URL}/chat/completions"
     headers = {
-        "X-User-Name": "admin",
+        "X-User-Name": "zhangsan",
         "Content-Type": "application/json"
     }
     data = {

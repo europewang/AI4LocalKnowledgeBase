@@ -828,3 +828,21 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 *   **部署**:
     *   执行 `docker compose build --no-cache frontend` 重建镜像。
     *   执行 `docker compose up -d frontend` 重启容器。
+
+## 2026-03-03: 修改 RAG 默认提示词及优化引用显示
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 
+    1. 修改所有 RAGFlow 相关的默认提示词为中文，确保回答为中文。
+    2. 对于使用了知识库数据但未在正文中显式引用的回答，需要在结尾追加参考资料列表。
+*   **修改**:
+    *   **后端**:
+        *   修改 `backend/src/main/java/com/ai4kb/backend/client/RagFlowClient.java`。
+        *   在 `chatCompletion` 和 `chatStream` 方法中，向 RAGFlow 发送请求时，增加系统提示词 `system_prompt`：`"你是一个智能助手。请始终用中文回答用户的问题。"`。
+    *   **前端**:
+        *   修改 `frontend/src/App.jsx`。
+        *   在 `ChatInterface` 组件的消息渲染逻辑中，当回答结束且有引用数据 (`msg.references`) 时，在回答下方渲染一个“参考资料”列表。
+        *   列表包含文档名称、相似度百分比及简短预览，点击可查看原文。
+*   **部署**:
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml build --no-cache backend frontend` 重建镜像。
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d` 重启容器。
