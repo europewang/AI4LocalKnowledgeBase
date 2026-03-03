@@ -846,3 +846,132 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 *   **部署**:
     *   执行 `docker compose -f deploy/docker-compose-ragflow.yml build --no-cache backend frontend` 重建镜像。
     *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d` 重启容器。
+
+## 2026-03-03: 添加知识库及文档的批量删除功能
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 
+    1. admin 的知识库管理页面，支持批量删除知识库。
+    2. 具体的知识库内，支持批量删除文件。
+*   **修改**:
+    *   **后端**:
+        *   修改 `backend/src/main/java/com/ai4kb/backend/client/RagFlowClient.java`，新增 `deleteDatasets(List<String> ids)` 方法支持批量删除。
+        *   修改 `backend/src/main/java/com/ai4kb/backend/controller/AdminController.java`，新增 `DELETE /api/admin/datasets` 接口。
+    *   **前端**:
+        *   修改 `frontend/src/App.jsx`。
+        *   **知识库管理页面 (`DatasetManager`)**: 
+            *   增加多选框和全选功能。
+            *   增加“批量删除”按钮，选中项目后显示。
+            *   更新 `DatasetCard` 组件以支持选择模式。
+        *   **文档列表页面 (`DatasetDetail`)**:
+            *   增加表格行多选框和表头全选框。
+            *   增加“批量删除”按钮，选中项目后显示。
+*   **部署**:
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml build --no-cache backend frontend` 重建镜像。
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d` 重启容器。
+
+## 2026-03-03: 优化知识库管理界面UI
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 知识库卡片上的删除按钮需要常驻显示，并调整位置到批量选择框旁边，避免重叠。
+*   **修改**:
+    *   **前端**:
+        *   修改 `frontend/src/App.jsx` 中的 `DatasetCard` 组件。
+        *   将删除按钮 (`Trash2`) 移动到右上角，与选择框 (`CheckSquare`) 并排显示。
+        *   移除删除按钮的 `opacity-0 group-hover:opacity-100` 样式，使其常驻显示。
+        *   移除删除按钮的 `!selectionMode` 条件，使其在选择模式下也可见（虽然通常批量操作时用不到单个删除，但保持可见性一致）。
+*   **部署**:
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml build --no-cache frontend` 重建前端镜像。
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d` 重启容器。
+
+## 2026-03-03: 知识库管理界面UI优化 - 批量模式下隐藏单个删除按钮
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+*   **需求**: 当知识库管理界面进入批量选择模式（即选中至少一个知识库）时，隐藏各个知识库卡片上的单独删除按钮。
+*   **修改**:
+    *   **前端**:
+        *   修改 `frontend/src/App.jsx` 中的 `DatasetCard` 组件。
+        *   给删除按钮添加条件渲染 `{!selectionMode && (...)}`。
+*   **部署**:
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml build --no-cache frontend` 重建前端镜像。
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d` 重启容器。
+
+## 2026-03-03: 前端重命名交互优化与服务重启
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **前端重构**:
+    *   在 `frontend/src/App.jsx` 中新增 `RenameModal` 组件，替换原有的 `window.prompt` 交互。
+    *   `RenameModal` 使用 Tailwind CSS 实现居中模态框，包含遮罩层、输入框、确认/取消按钮及加载状态。
+    *   改造 `DatasetManager` 组件：引入 `renameModal` 状态，替换 `handleRenameDataset` 逻辑以调用模态框。
+    *   改造 `DatasetDetail` 组件：引入 `renameModal` 状态，替换 `handleRenameDoc` 逻辑以调用模态框。
+2.  **服务重启**:
+    *   使用 `sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend frontend` 命令重建并重启前端与后端服务。
+    *   验证 `ragflow-frontend` (8086) 和 `ragflow-backend` (8083) 容器状态正常 (Up)。
+
+**设计决策**:
+*   **交互一致性**: 将知识库重命名和文件重命名统一使用自定义模态框，提升用户体验。
+*   **状态管理**: 在 `DatasetManager` 和 `DatasetDetail` 中分别维护模态框状态，保持组件独立性，避免过度提升状态至 `App` 层。
+
+## 2026-03-03: 容器重启操作（保留大模型服务）
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **用户需求**: 重启所有 Docker 容器，但保留大模型服务（Xinference）不重启。
+2.  **操作执行**:
+    *   识别大模型服务容器名为 `xinference`。
+    *   获取所有相关容器列表，排除 `xinference`。
+    *   执行 `docker restart` 重启了 `ragflow-*` 系列服务、`mineru-app`、`ai-tender-*` 系列服务及基础组件（PostgreSQL, Etcd）。
+3.  **验证结果**:
+    *   `xinference` 保持运行（Up 24 hours+）。
+    *   其他所有服务均已重启并处于 Up 状态。
+
+## 2026-03-03: RAGFlow Nginx 配置修复
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **问题现象**: 用户访问 `http://10.0.19.250:8084/` 显示 Nginx 默认欢迎页面，而非 RAGFlow 界面。
+2.  **原因分析**:
+    *   `ragflow-server` 容器使用默认镜像配置，其中 `/etc/nginx/sites-enabled/default` 优先级高于（或冲突于）预期的 `/etc/nginx/conf.d/default.conf`。
+    *   此前的容器重启操作 (`docker restart`) 未应用 `docker-compose.yml` 中的卷挂载变更。
+3.  **修复措施**:
+    *   修改 `deploy/docker-compose-ragflow.yml`，将 Nginx 配置文件挂载路径调整为 `/etc/nginx/sites-enabled/default`，直接覆盖默认站点配置。
+    *   执行 `docker compose -f deploy/docker-compose-ragflow.yml up -d ragflow` 重建容器以应用配置。
+4.  **验证结果**:
+    *   容器内 `/etc/nginx/sites-enabled/default` 内容确认为自定义代理配置。
+    *   `nginx -t` 检查通过，服务已重载。
+
+## 2026-03-03: 前端 PDF 阅览器连续滚动功能开发
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **需求**: 用户要求点击引用后显示的 PDF (FullPDF) 支持上下页连续滚动，而非单页点击翻页。
+2.  **修改**:
+    *   **前端 (`frontend/src/App.jsx`)**:
+        *   修改 `SourceViewer` 组件，移除 `pageNumber` 状态及其相关逻辑（翻页按钮）。
+        *   重构 `Document` 组件内部渲染逻辑，使用 `Array.from` 循环渲染所有页面 (`numPages`)。
+        *   为 `Document` 容器添加 `flex flex-col gap-4` 样式，实现页面纵向排列且有间隔。
+        *   保留引用高亮 (`Highlight Overlay`) 功能，确保引用定位准确。
+3.  **部署**:
+    *   执行 `sudo docker compose -f docker-compose-ragflow.yml up -d --build frontend` 重建并重启前端容器。
+    *   验证 `ragflow-frontend` (8086) 容器状态正常。
+
+## 2026-03-03: 深度思考折叠与对话打断功能开发
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **需求**:
+    *   **深度思考 (Deep Thinking)**: 生成过程中展开，生成结束后自动折叠，支持手动展开/折叠。
+    *   **对话打断**: 在 AI 生成过程中（转圈时），允许用户再次输入并发送新问题，中断当前生成。
+2.  **修改**:
+    *   **前端 (`frontend/src/App.jsx`)**:
+        *   **ThoughtBlock 组件**:
+            *   新增 `isStreaming` 属性。
+            *   新增 `useEffect` 监听 `isStreaming`：开始生成时 (`true`) 自动展开，结束时 (`false`) 自动折叠。
+        *   **ChatInterface 组件**:
+            *   引入 `abortControllerRef` 用于管理 `fetch` 请求的中断。
+            *   引入 `currentRequestIdRef` 用于追踪请求 ID，防止旧请求的回调覆盖新请求的状态。
+            *   **handleSend 逻辑**:
+                *   发送前检查是否正在加载，如果是，则调用 `abort()` 中断上一请求。
+                *   创建新的 `AbortController` 并传递 `signal` 给 `fetch`。
+                *   `finally` 块中仅当 `currentRequestId` 匹配时才重置 `loading` 状态。
+            *   **UI 交互**:
+                *   移除输入框和发送按钮的 `disabled={loading}` 限制，允许随时输入。
+3.  **部署**:
+    *   执行 `sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build frontend` 重建并重启前端容器。
+    *   验证 `ragflow-frontend` 容器状态正常。

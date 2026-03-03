@@ -54,12 +54,26 @@ public class RagFlowClient {
     }
 
     public Mono<JsonNode> deleteDataset(String id) {
+        return deleteDatasets(List.of(id));
+    }
+
+    public Mono<JsonNode> deleteDatasets(List<String> ids) {
         // RAGFlow API uses DELETE /api/v1/datasets with body {"ids": [...]}
         return webClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri(baseUrl + "/api/v1/datasets")
                 .header("Authorization", "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("ids", List.of(id)))
+                .bodyValue(Map.of("ids", ids))
+                .retrieve()
+                .bodyToMono(JsonNode.class);
+    }
+
+    public Mono<JsonNode> updateDataset(String id, String name) {
+        return webClient.put()
+                .uri(baseUrl + "/api/v1/datasets/" + id)
+                .header("Authorization", "Bearer " + apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("name", name))
                 .retrieve()
                 .bodyToMono(JsonNode.class);
     }
@@ -91,6 +105,16 @@ public class RagFlowClient {
                 .header("Authorization", "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("ids", ids))
+                .retrieve()
+                .bodyToMono(JsonNode.class);
+    }
+
+    public Mono<JsonNode> updateDocument(String datasetId, String documentId, String name) {
+        return webClient.put()
+                .uri(baseUrl + "/api/v1/datasets/" + datasetId + "/documents/" + documentId)
+                .header("Authorization", "Bearer " + apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("name", name))
                 .retrieve()
                 .bodyToMono(JsonNode.class);
     }

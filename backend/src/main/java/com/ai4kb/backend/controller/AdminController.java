@@ -42,6 +42,16 @@ public class AdminController {
         return ragFlowClient.deleteDataset(id);
     }
 
+    @DeleteMapping("/datasets")
+    public Mono<JsonNode> deleteDatasets(@RequestBody Map<String, List<String>> body) {
+        return ragFlowClient.deleteDatasets(body.get("ids"));
+    }
+
+    @PutMapping("/datasets/{id}")
+    public Mono<JsonNode> updateDataset(@PathVariable String id, @RequestBody Map<String, String> body) {
+        return ragFlowClient.updateDataset(id, body.get("name"));
+    }
+
     @GetMapping("/datasets/{id}/documents")
     public Mono<JsonNode> listDocuments(@PathVariable String id,
                                         @RequestParam(defaultValue = "1") int page,
@@ -84,6 +94,11 @@ public class AdminController {
         // Let's support "ids" as per previous implementation, but be aware of RAGFlow API.
         // RagFlowClient.deleteDocuments uses "ids" in map.
         return ragFlowClient.deleteDocuments(id, body.get("ids"));
+    }
+
+    @PutMapping("/datasets/{id}/documents/{docId}")
+    public Mono<JsonNode> updateDocument(@PathVariable String id, @PathVariable String docId, @RequestBody Map<String, String> body) {
+        return ragFlowClient.updateDocument(id, docId, body.get("name"));
     }
 
     @GetMapping("/users")

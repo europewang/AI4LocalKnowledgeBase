@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain } from 'lucide-react'
+import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -55,6 +55,36 @@ async function deleteDataset(id) {
     method: 'DELETE'
   })
   if (!res.ok) throw new Error('Failed to delete dataset')
+  return res.json()
+}
+
+async function deleteDatasets(ids) {
+  const res = await fetch(`${API_BASE}/admin/datasets`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  })
+  if (!res.ok) throw new Error('Failed to delete datasets')
+  return res.json()
+}
+
+async function updateDataset(id, name) {
+  const res = await fetch(`${API_BASE}/admin/datasets/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+  if (!res.ok) throw new Error('Failed to update dataset')
+  return res.json()
+}
+
+async function updateDocument(datasetId, docId, name) {
+  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents/${docId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+  if (!res.ok) throw new Error('Failed to update document')
   return res.json()
 }
 
@@ -498,6 +528,63 @@ function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
   )
 }
 
+function RenameModal({ isOpen, onClose, onConfirm, initialValue, title, isSubmitting }) {
+  const [value, setValue] = useState(initialValue)
+
+  useEffect(() => {
+    setValue(initialValue)
+  }, [initialValue])
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <Edit size={18} className="text-blue-500" />
+            {title}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+            <X size={20} className="text-slate-500" />
+          </button>
+        </div>
+        <div className="p-6">
+          <label className="block text-sm font-medium text-slate-700 mb-2">名称</label>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && value.trim()) {
+                onConfirm(value)
+              }
+            }}
+          />
+        </div>
+        <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors font-medium text-sm"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => onConfirm(value)}
+            disabled={!value.trim() || isSubmitting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-sm transition-colors"
+          >
+            {isSubmitting && <Loader2 className="animate-spin" size={16} />}
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DatasetDetail({ dataset, onBack }) {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -505,10 +592,19 @@ function DatasetDetail({ dataset, onBack }) {
   const [deletingId, setDeletingId] = useState(null)
   const [parsingId, setParsingId] = useState(null)
   const [viewingDoc, setViewingDoc] = useState(null)
+  const [selectedDocs, setSelectedDocs] = useState([])
+  const [batchDeleting, setBatchDeleting] = useState(false)
+  const [renameModal, setRenameModal] = useState({
+    isOpen: false,
+    doc: null,
+    initialValue: '',
+    isSubmitting: false
+  })
 
   const loadDocs = () => {
     // Only set loading on initial load to avoid flickering during polling
     if (docs.length === 0) setLoading(true)
+    setSelectedDocs([]) // Reset selection on reload
     fetchDocuments(dataset.id)
       .then(data => setDocs(Array.isArray(data) ? data : []))
       .catch(console.error)
@@ -572,6 +668,63 @@ function DatasetDetail({ dataset, onBack }) {
     }
   }
 
+  const handleBatchDeleteDocs = async () => {
+    if (selectedDocs.length === 0) return
+    if (!window.confirm(`确定删除选中的 ${selectedDocs.length} 个文件吗？`)) return
+    
+    setBatchDeleting(true)
+    try {
+      await deleteDocuments(dataset.id, selectedDocs)
+      loadDocs()
+    } catch (e) {
+      alert('批量删除失败: ' + e.message)
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
+  const handleSelectAllDocs = (e) => {
+    if (e.target.checked) {
+      setSelectedDocs(docs.map(d => d.id))
+    } else {
+      setSelectedDocs([])
+    }
+  }
+
+  const handleSelectDoc = (docId) => {
+    setSelectedDocs(prev => 
+      prev.includes(docId) 
+        ? prev.filter(id => id !== docId)
+        : [...prev, docId]
+    )
+  }
+
+  const handleRenameDoc = (doc) => {
+    setRenameModal({
+      isOpen: true,
+      doc,
+      initialValue: doc.name,
+      isSubmitting: false
+    })
+  }
+
+  const handleConfirmRename = async (newName) => {
+    if (!newName || newName === renameModal.initialValue) {
+      setRenameModal(prev => ({ ...prev, isOpen: false }))
+      return
+    }
+
+    setRenameModal(prev => ({ ...prev, isSubmitting: true }))
+    try {
+      await updateDocument(dataset.id, renameModal.doc.id, newName)
+      loadDocs()
+      setRenameModal(prev => ({ ...prev, isOpen: false }))
+    } catch (e) {
+      alert('重命名失败: ' + e.message)
+      setRenameModal(prev => ({ ...prev, isSubmitting: false }))
+    }
+  }
+
   const handleViewDoc = async (doc) => {
     try {
       const blob = await getDocumentFile(dataset.id, doc.id)
@@ -611,17 +764,29 @@ function DatasetDetail({ dataset, onBack }) {
           </h2>
           <p className="text-slate-500 text-sm mt-1 font-mono select-all">ID: {dataset.id}</p>
         </div>
-        <div className="relative group">
-          <input 
-            type="file" 
-            onChange={handleFileUpload}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-            disabled={uploading}
-          />
-          <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors shadow-sm">
-            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            上传文件
-          </button>
+        <div className="relative group flex gap-2">
+          {selectedDocs.length > 0 && (
+            <button 
+              onClick={handleBatchDeleteDocs}
+              disabled={batchDeleting}
+              className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-2 disabled:opacity-50 transition-colors"
+            >
+              {batchDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              批量删除 ({selectedDocs.length})
+            </button>
+          )}
+          <div className="relative">
+            <input 
+              type="file" 
+              onChange={handleFileUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              disabled={uploading}
+            />
+            <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors shadow-sm h-full">
+              {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              上传文件
+            </button>
+          </div>
         </div>
       </div>
       
@@ -629,6 +794,15 @@ function DatasetDetail({ dataset, onBack }) {
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium border-b">
             <tr>
+              <th className="px-6 py-4 w-12">
+                <input 
+                  type="checkbox" 
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  checked={docs.length > 0 && selectedDocs.length === docs.length}
+                  onChange={handleSelectAllDocs}
+                  disabled={docs.length === 0}
+                />
+              </th>
               <th className="px-6 py-4">文件名</th>
               <th className="px-6 py-4">上传时间</th>
               <th className="px-6 py-4">分块数</th>
@@ -639,20 +813,28 @@ function DatasetDetail({ dataset, onBack }) {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                   加载中...
                 </td>
               </tr>
             ) : docs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                   暂无文档，请上传文件
                 </td>
               </tr>
             ) : (
               docs.map((doc) => (
-                <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={doc.id} className={`hover:bg-slate-50 transition-colors ${selectedDocs.includes(doc.id) ? 'bg-blue-50/50' : ''}`}>
+                  <td className="px-6 py-4">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={selectedDocs.includes(doc.id)}
+                      onChange={() => handleSelectDoc(doc.id)}
+                    />
+                  </td>
                   <td className="px-6 py-4 font-medium text-slate-700 flex items-center gap-2">
                     <FileText size={16} className="text-slate-400" />
                     <button onClick={() => handleViewDoc(doc)} className="hover:text-blue-600 hover:underline text-left">
@@ -697,6 +879,13 @@ function DatasetDetail({ dataset, onBack }) {
                           {parsingId === doc.id ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                         </button>
                       <button 
+                        onClick={() => handleRenameDoc(doc)}
+                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="重命名"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button 
                         onClick={() => handleDeleteDoc(doc.id)}
                         disabled={deletingId === doc.id}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -712,30 +901,58 @@ function DatasetDetail({ dataset, onBack }) {
           </tbody>
         </table>
       </div>
+      <RenameModal 
+        isOpen={renameModal.isOpen}
+        title="重命名文件"
+        initialValue={renameModal.initialValue}
+        isSubmitting={renameModal.isSubmitting}
+        onClose={() => setRenameModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleConfirmRename}
+      />
     </div>
   )
 }
 
-function DatasetCard({ dataset, onClick, onDelete }) {
+function DatasetCard({ dataset, onClick, onDelete, onRename, selected, onSelect, selectionMode }) {
   return (
     <div 
-      onClick={onClick}
-      className="bg-white rounded-xl border border-slate-100 p-6 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer group relative"
+      onClick={selectionMode ? (e) => onSelect(dataset.id, e) : onClick}
+      className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all cursor-pointer group relative ${selected ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-100 hover:border-blue-200'}`}
     >
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
+        {!selectionMode && (
+          <>
+            <button 
+              onClick={(e) => onRename(dataset, e)}
+              className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-all"
+              title="重命名"
+            >
+              <FileText size={12} />
+            </button>
+            <button 
+              onClick={(e) => onDelete(dataset.id, e)}
+              className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+              title="删除知识库"
+            >
+              <Trash2 size={12} />
+            </button>
+          </>
+        )}
+        <div 
+          onClick={(e) => onSelect(dataset.id, e)}
+          className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-slate-300 hover:border-blue-400'}`}
+        >
+          {selected && <CheckSquare size={14} />}
+        </div>
+      </div>
+
       <div className="flex items-start justify-between mb-4">
         <div className="p-3 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
           <Database className="w-6 h-6 text-blue-500" />
         </div>
-        <button 
-          onClick={(e) => onDelete(dataset.id, e)}
-          className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-          title="删除知识库"
-        >
-          <Trash2 size={18} />
-        </button>
       </div>
       
-      <h3 className="font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">{dataset.name}</h3>
+      <h3 className="font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1 pr-14">{dataset.name}</h3>
       <p className="text-sm text-slate-400 mb-4 line-clamp-2">{dataset.description || '暂无描述'}</p>
       
       <div className="flex items-center justify-between text-xs text-slate-500 border-t pt-4">
@@ -759,9 +976,18 @@ function DatasetManager() {
   const [deleting, setDeleting] = useState(null)
   const [newDatasetName, setNewDatasetName] = useState('')
   const [viewingDataset, setViewingDataset] = useState(null)
+  const [selectedDatasets, setSelectedDatasets] = useState([])
+  const [batchDeleting, setBatchDeleting] = useState(false)
+  const [renameModal, setRenameModal] = useState({
+    isOpen: false,
+    dataset: null,
+    initialValue: '',
+    isSubmitting: false
+  })
 
   const loadData = () => {
     setLoading(true)
+    setSelectedDatasets([]) // Reset selection
     fetchDatasets()
       .then(setDatasets)
       .catch(console.error)
@@ -804,6 +1030,70 @@ function DatasetManager() {
     }
   }
 
+  const handleRenameDataset = (dataset, e) => {
+    e.stopPropagation()
+    setRenameModal({
+      isOpen: true,
+      dataset,
+      initialValue: dataset.name,
+      isSubmitting: false
+    })
+  }
+
+  const handleConfirmRename = async (newName) => {
+    if (!newName || newName === renameModal.initialValue) {
+      setRenameModal(prev => ({ ...prev, isOpen: false }))
+      return
+    }
+
+    setRenameModal(prev => ({ ...prev, isSubmitting: true }))
+    try {
+      await updateDataset(renameModal.dataset.id, newName)
+      loadData()
+      setRenameModal(prev => ({ ...prev, isOpen: false }))
+    } catch (e) {
+      alert('重命名失败: ' + e.message)
+      setRenameModal(prev => ({ ...prev, isSubmitting: false }))
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    if (selectedDatasets.length === 0) return
+    if (!window.confirm(`确定要删除选中的 ${selectedDatasets.length} 个知识库吗？此操作不可恢复。`)) return
+    
+    setBatchDeleting(true)
+    try {
+      await deleteDatasets(selectedDatasets)
+      // Optimistic update
+      setDatasets(prev => prev.filter(d => !selectedDatasets.includes(d.id)))
+      setSelectedDatasets([])
+      // Wait a bit before reloading
+      setTimeout(() => loadData(), 500)
+    } catch (e) {
+      alert('批量删除失败: ' + e.message)
+      loadData()
+    } finally {
+      setBatchDeleting(false)
+    }
+  }
+
+  const handleSelectDataset = (id, e) => {
+    if (e) e.stopPropagation()
+    setSelectedDatasets(prev => 
+      prev.includes(id) 
+        ? prev.filter(did => did !== id)
+        : [...prev, id]
+    )
+  }
+
+  const handleSelectAll = () => {
+    if (selectedDatasets.length === datasets.length) {
+      setSelectedDatasets([])
+    } else {
+      setSelectedDatasets(datasets.map(d => d.id))
+    }
+  }
+
   if (viewingDataset) {
     return <DatasetDetail dataset={viewingDataset} onBack={() => {
       setViewingDataset(null)
@@ -819,9 +1109,29 @@ function DatasetManager() {
             <Database className="text-blue-500" size={24} />
             知识库管理
           </h2>
-          <p className="text-slate-500 text-sm mt-1">创建和管理您的本地知识库</p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-slate-500 text-sm">创建和管理您的本地知识库</p>
+            {datasets.length > 0 && (
+              <button 
+                onClick={handleSelectAll}
+                className="text-xs text-blue-600 hover:underline ml-2"
+              >
+                {selectedDatasets.length === datasets.length ? '取消全选' : '全选'}
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
+          {selectedDatasets.length > 0 && (
+            <button 
+              onClick={handleBatchDelete}
+              disabled={batchDeleting}
+              className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-2 disabled:opacity-50 transition-colors mr-2"
+            >
+              {batchDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+              批量删除 ({selectedDatasets.length})
+            </button>
+          )}
           <input
             type="text"
             placeholder="新知识库名称"
@@ -851,7 +1161,11 @@ function DatasetManager() {
               key={ds.id} 
               dataset={ds} 
               onClick={() => setViewingDataset(ds)} 
-              onDelete={handleDelete} 
+              onDelete={handleDelete}
+              onRename={handleRenameDataset}
+              selected={selectedDatasets.includes(ds.id)}
+              onSelect={handleSelectDataset}
+              selectionMode={selectedDatasets.length > 0}
             />
           ))}
           {datasets.length === 0 && (
@@ -862,6 +1176,14 @@ function DatasetManager() {
           )}
         </div>
       )}
+      <RenameModal 
+        isOpen={renameModal.isOpen}
+        title="重命名知识库"
+        initialValue={renameModal.initialValue}
+        isSubmitting={renameModal.isSubmitting}
+        onClose={() => setRenameModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleConfirmRename}
+      />
     </div>
   )
 }
@@ -1034,20 +1356,28 @@ function PermissionManager() {
 function SourceViewer({ reference, onClose }) {
   const [activeTab, setActiveTab] = useState('summary') // 'summary' | 'pdf'
   const [numPages, setNumPages] = useState(null)
-  const [pageNumber, setPageNumber] = useState(1)
   const [scale, setScale] = useState(1.0)
   const [imageError, setImageError] = useState(false)
 
   useEffect(() => {
-    if (reference?.positions && reference.positions.length > 0) {
-      setPageNumber(reference.positions[0][0])
-    } else {
-      setPageNumber(1)
-    }
     setActiveTab('summary')
     setImageError(false)
     setScale(1.0)
+    setNumPages(null)
   }, [reference])
+
+  useEffect(() => {
+    if (activeTab === 'pdf' && numPages && reference?.positions?.[0]) {
+        // Delay slightly to allow rendering
+        setTimeout(() => {
+            const pageNum = reference.positions[0][0];
+            const pageElement = document.getElementById(`pdf-page-${pageNum}`);
+            if (pageElement) {
+                pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    }
+  }, [activeTab, numPages, reference])
 
   if (!reference) return null
 
@@ -1125,9 +1455,6 @@ function SourceViewer({ reference, onClose }) {
 
                 {/* Text Content */}
                 <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-700 whitespace-pre-wrap leading-relaxed text-sm font-mono">
-                  {/* If we have highlight positions, maybe we can show them here too? 
-                      For now, just show the content which is the chunk itself. 
-                      Ideally, RAGFlow returns the chunk text. */}
                   {reference.content_with_weight ? (
                      <div dangerouslySetInnerHTML={{ __html: reference.content_with_weight }} />
                   ) : (
@@ -1171,23 +1498,9 @@ function SourceViewer({ reference, onClose }) {
                {/* PDF Toolbar */}
                <div className="p-2 border-b bg-white flex items-center justify-between shrink-0 z-10 shadow-sm">
                  <div className="flex items-center gap-2">
-                   <button 
-                     onClick={() => setPageNumber(p => Math.max(1, p - 1))}
-                     disabled={pageNumber <= 1}
-                     className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-50"
-                   >
-                     <ChevronLeft size={16} />
-                   </button>
-                   <span className="text-xs font-mono w-16 text-center select-none">
-                     {pageNumber} / {numPages || '--'}
+                   <span className="text-xs font-mono text-slate-500 px-2">
+                     Total {numPages || '--'} Pages
                    </span>
-                   <button 
-                     onClick={() => setPageNumber(p => Math.min(numPages || Infinity, p + 1))}
-                     disabled={pageNumber >= numPages}
-                     className="p-1.5 hover:bg-slate-100 rounded disabled:opacity-50"
-                   >
-                     <ChevronRight size={16} />
-                   </button>
                  </div>
                  <div className="flex items-center gap-2">
                     <button onClick={() => setScale(s => Math.max(0.5, s - 0.1))} className="p-1.5 hover:bg-slate-100 rounded"><ZoomOut size={16} /></button>
@@ -1201,40 +1514,45 @@ function SourceViewer({ reference, onClose }) {
                  <Document
                    file={`/api/document/get/${reference.document_id}`}
                    onLoadSuccess={onDocumentLoadSuccess}
-                   className="shadow-xl"
+                   className="shadow-xl flex flex-col gap-4"
                    loading={<div className="flex items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Loading PDF...</div>}
                    error={<div className="text-red-500 text-sm p-4 bg-red-50 rounded">Failed to load PDF. Please check permissions.</div>}
                  >
-                   <Page 
-                     pageNumber={pageNumber} 
-                     scale={scale}
-                     renderTextLayer={false}
-                     renderAnnotationLayer={false}
-                   >
-                     {/* Highlight Overlay */}
-                     {reference.positions && reference.positions.map((pos, idx) => {
-                        // Position format: [page, x_min, x_max, y_min, y_max] (Assuming RAGFlow standard)
-                        const [p, x_min, x_max, y_min, y_max] = pos; 
-                        
-                        if (p !== pageNumber) return null;
-                        
+                   {numPages && Array.from(new Array(numPages), (el, index) => {
+                        const pageNum = index + 1;
                         return (
-                          <div
-                            key={idx}
-                            style={{
-                              position: 'absolute',
-                              left: x_min * scale,
-                              top: y_min * scale,
-                              width: (x_max - x_min) * scale,
-                              height: (y_max - y_min) * scale,
-                              backgroundColor: 'rgba(255, 255, 0, 0.2)',
-                              border: '1px solid rgba(255, 200, 0, 0.4)',
-                              pointerEvents: 'none'
-                            }}
-                          />
-                        )
-                     })}
-                   </Page>
+                            <div key={`page_${pageNum}`} id={`pdf-page-${pageNum}`} className="relative">
+                                <Page 
+                                    pageNumber={pageNum} 
+                                    scale={scale}
+                                    renderTextLayer={false}
+                                    renderAnnotationLayer={false}
+                                    className="shadow-md"
+                                >
+                                    {/* Highlight Overlay */}
+                                    {reference.positions && reference.positions.map((pos, idx) => {
+                                        const [p, x_min, x_max, y_min, y_max] = pos; 
+                                        if (p !== pageNum) return null;
+                                        return (
+                                            <div
+                                                key={idx}
+                                                style={{
+                                                    position: 'absolute',
+                                                    left: x_min * scale,
+                                                    top: y_min * scale,
+                                                    width: (x_max - x_min) * scale,
+                                                    height: (y_max - y_min) * scale,
+                                                    backgroundColor: 'rgba(255, 255, 0, 0.2)',
+                                                    border: '1px solid rgba(255, 200, 0, 0.4)',
+                                                    pointerEvents: 'none'
+                                                }}
+                                            />
+                                        )
+                                    })}
+                                </Page>
+                            </div>
+                        );
+                   })}
                  </Document>
                </div>
             </div>
@@ -1281,8 +1599,17 @@ function MarkdownWithCitations({ content, references, onViewReference }) {
   );
 }
 
-function ThoughtBlock({ content, references, onViewReference }) {
+function ThoughtBlock({ content, references, onViewReference, isStreaming }) {
   const [expanded, setExpanded] = useState(true);
+
+  // Auto-collapse when streaming finishes, expand when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      setExpanded(true)
+    } else {
+      setExpanded(false)
+    }
+  }, [isStreaming])
   
   return (
     <div className="mb-4 rounded-lg overflow-hidden border border-amber-200 bg-amber-50">
@@ -1318,6 +1645,8 @@ function ChatInterface({ role }) {
   const [loading, setLoading] = useState(false)
   const [viewingRef, setViewingRef] = useState(null)
   const messagesEndRef = useRef(null)
+  const abortControllerRef = useRef(null)
+  const currentRequestIdRef = useRef(0)
 
   // Auto-scroll
   useEffect(() => {
@@ -1325,8 +1654,13 @@ function ChatInterface({ role }) {
   }, [messages])
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return
+    if (!input.trim()) return
 
+    if (loading && abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    const requestId = ++currentRequestIdRef.current
     const userMsg = { role: 'user', content: input }
     setMessages(prev => [...prev, userMsg])
     setInput('')
@@ -1334,6 +1668,8 @@ function ChatInterface({ role }) {
 
     const aiMsgId = Date.now()
     setMessages(prev => [...prev, { role: 'assistant', content: '', id: aiMsgId, isStreaming: true }])
+    
+    abortControllerRef.current = new AbortController()
 
     try {
       const response = await fetch(`${API_BASE}/chat/completions`, {
@@ -1347,7 +1683,8 @@ function ChatInterface({ role }) {
           // user role does not select datasets; backend uses assigned permissions
           // admin can potentially select, but let's default to all/auto for now
           stream: true
-        })
+        }),
+        signal: abortControllerRef.current.signal
       })
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -1400,12 +1737,17 @@ function ChatInterface({ role }) {
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') {
+        return
+      }
       console.error(err)
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId ? { ...msg, content: `**Error**: ${err.message}` } : msg
       ))
     } finally {
-      setLoading(false)
+      if (currentRequestIdRef.current === requestId) {
+        setLoading(false)
+      }
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId ? { ...msg, isStreaming: false } : msg
       ))
@@ -1502,7 +1844,8 @@ function ChatInterface({ role }) {
                         <ThoughtBlock 
                           content={thought} 
                           references={msg.references} 
-                          onViewReference={setViewingRef} 
+                          onViewReference={setViewingRef}
+                          isStreaming={msg.isStreaming} 
                         />
                       )}
                       <MarkdownWithCitations 
@@ -1575,11 +1918,11 @@ function ChatInterface({ role }) {
               }}
               placeholder="请输入您的问题..."
               className="w-full pl-4 pr-12 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-[56px] text-sm"
-              disabled={loading}
+              disabled={false}
             />
             <button
               onClick={handleSend}
-              disabled={loading || !input.trim()}
+              disabled={!input.trim()}
               className="absolute right-2 top-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
