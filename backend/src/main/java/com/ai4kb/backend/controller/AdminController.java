@@ -48,8 +48,14 @@ public class AdminController {
     }
 
     @PutMapping("/datasets/{id}")
-    public Mono<JsonNode> updateDataset(@PathVariable String id, @RequestBody Map<String, String> body) {
-        return ragFlowClient.updateDataset(id, body.get("name"));
+    public Mono<JsonNode> updateDataset(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        String name = (String) body.get("name");
+        String description = (String) body.get("description");
+        String language = (String) body.get("language");
+        String permission = (String) body.get("permission");
+        Map<String, Object> parserConfig = (Map<String, Object>) body.get("parser_config");
+
+        return ragFlowClient.updateDataset(id, name, description, language, permission, parserConfig);
     }
 
     @GetMapping("/datasets/{id}/documents")

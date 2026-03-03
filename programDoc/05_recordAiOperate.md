@@ -975,3 +975,56 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 3.  **部署**:
     *   执行 `sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build frontend` 重建并重启前端容器。
     *   验证 `ragflow-frontend` 容器状态正常。
+
+## 2026-03-03: 知识库描述编辑功能开发
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1.  **需求**:
+    *   在知识库管理中，支持修改知识库的描述（Description/备注），不仅仅是名称。
+2.  **修改**:
+    *   **后端 (`backend`)**:
+        *   **RagFlowClient.java**: 更新 `updateDataset` 方法，增加 `description` 参数，并在请求体中发送。
+        *   **AdminController.java**: 更新 `PUT /datasets/{id}` 接口，解析 `description` 字段并调用客户端更新。
+    *   **前端 (`frontend/src/App.jsx`)**:
+        *   **RenameModal 组件**: 升级为支持可选描述输入的模态框。当传入 `initialDescription` 时，显示描述输入框。
+        *   **DatasetManager 组件**:
+            *   在重命名/编辑知识库时，传递当前描述给模态框。
+            *   调用更新接口时同时发送名称和描述。
+        *   **API**: 更新 `updateDataset` 函数以支持发送 `description` 字段。
+3.  **部署**:
+    *   执行 `sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend frontend` 重建并重启前后端容器。
+    *   验证 `ragflow-backend` 和 `ragflow-frontend` 容器状态正常。
+4.  **文档更新**:
+    *   更新 `03_API_Interface_Spec.md`，补充 `PUT /datasets/{id}` 接口说明。
+
+## 2026-03-03: 知识库配置功能增强与中文默认值设置
+
+### 变更目的
+响应用户需求，修复知识库描述无法更新的问题，并增加知识库配置页面（SettingsModal），允许用户在详情页直接修改名称、描述、语言、权限及解析配置。同时将所有默认语言和提示词设置为中文。
+
+### 变更内容
+1.  **后端 (Backend)**:
+    *   修改 `com.ai4kb.backend.client.RagFlowClient.updateDataset`:
+        *   扩展方法签名，支持 `language`, `permission`, `parser_config` 参数。
+        *   构建包含这些新字段的请求体并发送 PUT 请求到 RAGFlow。
+    *   修改 `com.ai4kb.backend.controller.AdminController`:
+        *   更新 `updateDataset` 接口以接收并透传这些新参数。
+
+2.  **前端 (Frontend)**:
+    *   修改 `src/App.jsx`:
+        *   新增 `SettingsModal` 组件：
+            *   提供表单修改知识库详情。
+            *   **默认值设置**: Language 默认为 'Chinese', Permission 默认为 'me'。
+            *   **Prompt 设置**: RAPTOR prompt 默认使用中文模板 ("请总结以下段落...")。
+        *   修改 `DatasetDetail` 组件：
+            *   在标题旁增加 "设置" (Settings) 按钮。
+            *   集成 `SettingsModal`。
+        *   更新 `updateDataset` API 调用函数以支持新字段。
+
+3.  **部署**:
+    *   重建并重启 `ragflow-backend` 和 `ragflow-frontend` 容器。
+
+### 验证
+*   后端服务正常启动 (Port 8083)。
+*   前端 Nginx 正常启动。
+*   通过 `docker logs` 确认无报错。

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit } from 'lucide-react'
+import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -68,11 +68,16 @@ async function deleteDatasets(ids) {
   return res.json()
 }
 
-async function updateDataset(id, name) {
+async function updateDataset(id, name, description, language, permission, parser_config) {
+  const body = { name, description }
+  if (language) body.language = language
+  if (permission) body.permission = permission
+  if (parser_config) body.parser_config = parser_config
+
   const res = await fetch(`${API_BASE}/admin/datasets/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error('Failed to update dataset')
   return res.json()
@@ -528,12 +533,14 @@ function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
   )
 }
 
-function RenameModal({ isOpen, onClose, onConfirm, initialValue, title, isSubmitting }) {
+function RenameModal({ isOpen, onClose, onConfirm, initialValue, initialDescription, title, isSubmitting }) {
   const [value, setValue] = useState(initialValue)
+  const [description, setDescription] = useState(initialDescription || '')
 
   useEffect(() => {
     setValue(initialValue)
-  }, [initialValue])
+    setDescription(initialDescription || '')
+  }, [initialValue, initialDescription])
 
   if (!isOpen) return null
 
@@ -549,20 +556,34 @@ function RenameModal({ isOpen, onClose, onConfirm, initialValue, title, isSubmit
             <X size={20} className="text-slate-500" />
           </button>
         </div>
-        <div className="p-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2">名称</label>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && value.trim()) {
-                onConfirm(value)
-              }
-            }}
-          />
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">名称</label>
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && value.trim() && initialDescription === undefined) {
+                  onConfirm(value)
+                }
+              }}
+            />
+          </div>
+          
+          {initialDescription !== undefined && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">描述 (可选)</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors min-h-[100px] resize-none"
+                placeholder="请输入知识库描述..."
+              />
+            </div>
+          )}
         </div>
         <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
           <button
@@ -572,7 +593,7 @@ function RenameModal({ isOpen, onClose, onConfirm, initialValue, title, isSubmit
             取消
           </button>
           <button
-            onClick={() => onConfirm(value)}
+            onClick={() => onConfirm(value, description)}
             disabled={!value.trim() || isSubmitting}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-sm transition-colors"
           >
@@ -585,7 +606,190 @@ function RenameModal({ isOpen, onClose, onConfirm, initialValue, title, isSubmit
   )
 }
 
-function DatasetDetail({ dataset, onBack }) {
+function SettingsModal({ isOpen, dataset, isSubmitting, onClose, onConfirm }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [language, setLanguage] = useState('English')
+  const [permission, setPermission] = useState('me')
+  const [layoutRecognize, setLayoutRecognize] = useState('DeepDOC')
+  const [chunkTokenNum, setChunkTokenNum] = useState(128)
+  const [useRaptor, setUseRaptor] = useState(false)
+  const [raptorPrompt, setRaptorPrompt] = useState('')
+  const [autoKeywords, setAutoKeywords] = useState(0)
+  const [autoQuestions, setAutoQuestions] = useState(0)
+  const [pagerank, setPagerank] = useState(0)
+
+  // Default Chinese prompt for RAPTOR
+  const DEFAULT_RAPTOR_PROMPT = "请总结以下段落。注意数字，不要编造。段落如下：\n      {cluster_content}\n以上是你需要总结的内容。"
+
+  useEffect(() => {
+    if (isOpen && dataset) {
+      setName(dataset.name || '')
+      setDescription(dataset.description || '')
+      setLanguage(dataset.language || 'Chinese')
+      setPermission(dataset.permission || 'me')
+      
+      const config = dataset.parser_config || {}
+      setLayoutRecognize(config.layout_recognize || 'DeepDOC')
+      setChunkTokenNum(config.chunk_token_num || 128)
+      setAutoKeywords(config.auto_keywords || 0)
+      setAutoQuestions(config.auto_questions || 0)
+      setPagerank(dataset.pagerank || 0)
+
+      const raptor = config.raptor || {}
+      setUseRaptor(raptor.use_raptor || false)
+      setRaptorPrompt(raptor.prompt || DEFAULT_RAPTOR_PROMPT)
+    }
+  }, [isOpen, dataset])
+
+  if (!isOpen) return null
+
+  const handleConfirm = () => {
+    const parser_config = {
+      ...dataset.parser_config,
+      chunk_token_num: parseInt(chunkTokenNum),
+      layout_recognize: layoutRecognize,
+      auto_keywords: parseInt(autoKeywords),
+      auto_questions: parseInt(autoQuestions),
+      raptor: {
+        ...dataset.parser_config?.raptor,
+        use_raptor: useRaptor,
+        prompt: raptorPrompt
+      }
+    }
+    onConfirm({ name, description, language, permission, pagerank, parser_config })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="font-bold text-lg text-slate-800">知识库设置</h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+            <X size={20} className="text-slate-500" />
+          </button>
+        </div>
+        
+        <div className="p-6 overflow-y-auto space-y-6">
+          {/* Basic Info */}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-slate-900 border-b pb-2">基本信息</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">名称</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">语言</label>
+                <select 
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                >
+                  <option value="Chinese">Chinese</option>
+                  <option value="English">English</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">描述</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50 h-20 resize-none"
+              />
+            </div>
+            <div>
+               <label className="block text-sm font-medium text-slate-700 mb-1">权限</label>
+               <select 
+                  value={permission}
+                  onChange={(e) => setPermission(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                >
+                  <option value="me">仅自己 (Me)</option>
+                  <option value="team">团队 (Team)</option>
+                </select>
+            </div>
+          </div>
+
+          {/* Parser Config */}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-slate-900 border-b pb-2">解析配置</h4>
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Layout Recognize</label>
+                <select 
+                  value={layoutRecognize}
+                  onChange={(e) => setLayoutRecognize(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                >
+                  <option value="DeepDOC">DeepDOC</option>
+                  <option value="Naive">Naive</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Chunk Token Number</label>
+                <input
+                  type="number"
+                  value={chunkTokenNum}
+                  onChange={(e) => setChunkTokenNum(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                />
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id="useRaptor"
+                  checked={useRaptor} 
+                  onChange={(e) => setUseRaptor(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="useRaptor" className="text-sm font-medium text-slate-700">启用 RAPTOR (递归摘要)</label>
+            </div>
+            
+            {useRaptor && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">RAPTOR Prompt</label>
+                  <textarea
+                    value={raptorPrompt}
+                    onChange={(e) => setRaptorPrompt(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-slate-50 h-32 resize-none text-xs font-mono"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">请保持 `{'{cluster_content}'}` 占位符。</p>
+                </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors font-medium text-sm"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium text-sm transition-colors"
+          >
+            {isSubmitting && <Loader2 className="animate-spin" size={16} />}
+            保存配置
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DatasetDetail({ dataset, onBack, onUpdate }) {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -598,6 +802,10 @@ function DatasetDetail({ dataset, onBack }) {
     isOpen: false,
     doc: null,
     initialValue: '',
+    isSubmitting: false
+  })
+  const [settingsModal, setSettingsModal] = useState({
+    isOpen: false,
     isSubmitting: false
   })
 
@@ -624,6 +832,26 @@ function DatasetDetail({ dataset, onBack }) {
       }, 5000)
     return () => clearInterval(interval)
   }, [dataset.id])
+
+  const handleUpdateSettings = async (newSettings) => {
+    setSettingsModal(prev => ({ ...prev, isSubmitting: true }))
+    try {
+        await updateDataset(
+            dataset.id, 
+            newSettings.name, 
+            newSettings.description, 
+            newSettings.language, 
+            newSettings.permission, 
+            newSettings.parser_config
+        )
+        if (onUpdate) onUpdate() // Refresh parent list
+        alert('配置已更新')
+        setSettingsModal({ isOpen: false, isSubmitting: false })
+    } catch (e) {
+        alert('更新失败: ' + e.message)
+        setSettingsModal(prev => ({ ...prev, isSubmitting: false }))
+    }
+  }
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]
@@ -761,6 +989,13 @@ function DatasetDetail({ dataset, onBack }) {
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Database className="text-blue-500" size={24} />
             {dataset.name}
+            <button 
+                onClick={() => setSettingsModal(prev => ({ ...prev, isOpen: true }))}
+                className="ml-2 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="设置"
+            >
+                <Settings size={20} />
+            </button>
           </h2>
           <p className="text-slate-500 text-sm mt-1 font-mono select-all">ID: {dataset.id}</p>
         </div>
@@ -909,6 +1144,13 @@ function DatasetDetail({ dataset, onBack }) {
         onClose={() => setRenameModal(prev => ({ ...prev, isOpen: false }))}
         onConfirm={handleConfirmRename}
       />
+      <SettingsModal 
+        isOpen={settingsModal.isOpen}
+        dataset={dataset}
+        isSubmitting={settingsModal.isSubmitting}
+        onClose={() => setSettingsModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleUpdateSettings}
+      />
     </div>
   )
 }
@@ -982,6 +1224,7 @@ function DatasetManager() {
     isOpen: false,
     dataset: null,
     initialValue: '',
+    initialDescription: '',
     isSubmitting: false
   })
 
@@ -1036,23 +1279,24 @@ function DatasetManager() {
       isOpen: true,
       dataset,
       initialValue: dataset.name,
+      initialDescription: dataset.description || '',
       isSubmitting: false
     })
   }
 
-  const handleConfirmRename = async (newName) => {
-    if (!newName || newName === renameModal.initialValue) {
+  const handleConfirmRename = async (newName, newDescription) => {
+    if (!newName || (newName === renameModal.initialValue && newDescription === renameModal.initialDescription)) {
       setRenameModal(prev => ({ ...prev, isOpen: false }))
       return
     }
 
     setRenameModal(prev => ({ ...prev, isSubmitting: true }))
     try {
-      await updateDataset(renameModal.dataset.id, newName)
+      await updateDataset(renameModal.dataset.id, newName, newDescription)
       loadData()
       setRenameModal(prev => ({ ...prev, isOpen: false }))
     } catch (e) {
-      alert('重命名失败: ' + e.message)
+      alert('修改失败: ' + e.message)
       setRenameModal(prev => ({ ...prev, isSubmitting: false }))
     }
   }
@@ -1178,8 +1422,9 @@ function DatasetManager() {
       )}
       <RenameModal 
         isOpen={renameModal.isOpen}
-        title="重命名知识库"
+        title="编辑知识库"
         initialValue={renameModal.initialValue}
+        initialDescription={renameModal.initialDescription}
         isSubmitting={renameModal.isSubmitting}
         onClose={() => setRenameModal(prev => ({ ...prev, isOpen: false }))}
         onConfirm={handleConfirmRename}

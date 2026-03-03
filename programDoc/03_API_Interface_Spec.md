@@ -113,7 +113,20 @@
     }
     ```
 
-#### 2. 用户授权 (Grant Permission)
+#### 2. 更新知识库 (Update Dataset)
+修改知识库名称或描述。透传至 RAGFlow。
+*   **URL**: `/datasets/{id}`
+*   **Method**: `PUT`
+*   **Body**:
+    ```json
+    {
+      "name": "新名称",
+      "description": "新的描述备注"
+    }
+    ```
+*   **Response**: RAGFlow 响应 JSON
+
+#### 3. 用户授权 (Grant Permission)
 给用户分配知识库访问权限。
 *   **URL**: `/permission/grant`
 *   **Method**: `POST`

@@ -15,6 +15,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 @Component
 @Slf4j
@@ -68,12 +69,19 @@ public class RagFlowClient {
                 .bodyToMono(JsonNode.class);
     }
 
-    public Mono<JsonNode> updateDataset(String id, String name) {
+    public Mono<JsonNode> updateDataset(String id, String name, String description, String language, String permission, Map<String, Object> parserConfig) {
+        Map<String, Object> body = new HashMap<>();
+        if (name != null) body.put("name", name);
+        if (description != null) body.put("description", description);
+        if (language != null) body.put("language", language);
+        if (permission != null) body.put("permission", permission);
+        if (parserConfig != null) body.put("parser_config", parserConfig);
+
         return webClient.put()
                 .uri(baseUrl + "/api/v1/datasets/" + id)
                 .header("Authorization", "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("name", name))
+                .bodyValue(body)
                 .retrieve()
                 .bodyToMono(JsonNode.class);
     }
