@@ -1,0 +1,8 @@
+com/ai4kb/backend/engine/service/RouteSampleServiceTest.class
+com/ai4kb/backend/user/auth/AuthInterceptorTest.class
+com/ai4kb/backend/user/service/AuthServiceTest.class
+com/ai4kb/backend/engine/controller/AgentControllerAuthContextTest.class
+com/ai4kb/backend/user/controller/AdminControllerRouteSampleTest.class
+com/ai4kb/backend/rag/processor/impl/RagDirectProcessorStreamTest.class
+com/ai4kb/backend/skill/service/SkillRegistryServiceTest.class
+com/ai4kb/backend/user/controller/UserAdminControllerTest.class

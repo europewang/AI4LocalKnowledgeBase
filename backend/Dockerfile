@@ -14,9 +14,13 @@ COPY src ./src
 RUN mvn package -DskipTests
 
 # Run Stage
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
+RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir ezdxf openpyxl
 COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /app/src/main/java/com/ai4kb/backend/skill/impl/cad_text_extractor /app/skill_scripts/cad_text_extractor
+ENV SKILL_CAD_SCRIPT_DIR=/app/skill_scripts/cad_text_extractor
 
 # 暴露端口
 EXPOSE 8083

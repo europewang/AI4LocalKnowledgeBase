@@ -1,0 +1,511 @@
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m-------------------------< [0;36mcom.ai4kb:backend[0;1m >--------------------------[m
+[[1;34mINFO[m] [1mBuilding backend 0.0.1-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-clean-plugin:3.3.2:clean[m [1m(default-clean)[m @ [36mbackend[0;1m ---[m
+[[1;34mINFO[m] Deleting /home/ubutnu/code/AI4LocalKnowledgeBase/backend/target
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.3.1:resources[m [1m(default-resources)[m @ [36mbackend[0;1m ---[m
+[[1;34mINFO[m] Copying 1 resource from src/main/resources to target/classes
+[[1;34mINFO[m] Copying 0 resource from src/main/resources to target/classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.11.0:compile[m [1m(default-compile)[m @ [36mbackend[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module! :source
+[[1;34mINFO[m] Compiling 28 source files with javac [debug release 17] to target/classes
+[[1;34mINFO[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java: Some input files use unchecked or unsafe operations.
+[[1;34mINFO[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java: Recompile with -Xlint:unchecked for details.
+[[1;34mINFO[m] -------------------------------------------------------------
+[[1;31mERROR[m] COMPILATION ERROR : 
+[[1;34mINFO[m] -------------------------------------------------------------
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[3,39] cannot access com.ai4kb.backend.common.client.RagFlowClient
+  bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java
+    file does not contain class com.ai4kb.backend.common.client.RagFlowClient
+    Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[6,37] cannot access com.ai4kb.backend.user.mapper.PermissionMapper
+  bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/PermissionMapper.java
+    file does not contain class com.ai4kb.backend.user.mapper.PermissionMapper
+    Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[7,37] cannot access com.ai4kb.backend.user.mapper.UserMapper
+  bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/UserMapper.java
+    file does not contain class com.ai4kb.backend.user.mapper.UserMapper
+    Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[22,8] duplicate class: com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[21,19] cannot find symbol
+  symbol:   class RagFlowClient
+  location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/PermissionMapper.java:[8,8] duplicate class: com.ai4kb.backend.mapper.PermissionMapper
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/UserMapper.java:[8,8] duplicate class: com.ai4kb.backend.mapper.UserMapper
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[32,19] cannot find symbol
+  symbol:   class RagFlowClient
+  location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[33,19] cannot find symbol
+  symbol:   class PermissionMapper
+  location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[34,19] cannot find symbol
+  symbol:   class UserMapper
+  location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[25,19] cannot find symbol
+  symbol:   class RagFlowClient
+  location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[26,19] cannot find symbol
+  symbol:   class UserMapper
+  location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[27,19] cannot find symbol
+  symbol:   class PermissionMapper
+  location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[22,50] cannot find symbol
+  symbol:   method getConversationId()
+  location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[22,87] cannot find symbol
+  symbol:   method getQuery()
+  location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[28,24] cannot find symbol
+  symbol:   method getConversationId()
+  location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[29,24] cannot find symbol
+  symbol:   method getToolCallId()
+  location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[30,24] cannot find symbol
+  symbol:   method getReviewedArgs()
+  location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[30,38] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[39,14] cannot find symbol
+  symbol:   method getMemoryWindow()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[39,44] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[58,14] cannot find symbol
+  symbol:   method setReviewedArgs(java.lang.String)
+  location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[59,14] cannot find symbol
+  symbol:   method setApprovalStatus(java.lang.String)
+  location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[62,14] cannot find symbol
+  symbol:   method setStatus(java.lang.String)
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[63,14] cannot find symbol
+  symbol:   method getMemoryWindow()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[63,44] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[65,28] cannot find symbol
+  symbol:   method getToolName()
+  location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[85,41] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest.Tool
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[87,53] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest.Function
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[94,54] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[95,32] cannot find symbol
+  symbol:   method getMemoryWindow()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[106,33] cannot find symbol
+  symbol:   method getChoices()
+  location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[106,67] cannot find symbol
+  symbol:   method getChoices()
+  location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[107,68] cannot find symbol
+  symbol:   method getChoices()
+  location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[108,64] cannot find symbol
+  symbol:   method getDelta()
+  location: variable choice of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Choice
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[111,38] cannot find symbol
+  symbol:   method getToolCalls()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[111,71] cannot find symbol
+  symbol:   method getToolCalls()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[112,71] cannot find symbol
+  symbol:   method getToolCalls()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[113,39] cannot find symbol
+  symbol:   method getId()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[114,58] cannot find symbol
+  symbol:   method getId()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[116,39] cannot find symbol
+  symbol:   method getFunction()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[117,43] cannot find symbol
+  symbol:   method getFunction()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[118,59] cannot find symbol
+  symbol:   method getFunction()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[120,43] cannot find symbol
+  symbol:   method getFunction()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[121,59] cannot find symbol
+  symbol:   method getFunction()
+  location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[127,38] cannot find symbol
+  symbol:   method getContent()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[128,60] cannot find symbol
+  symbol:   method getContent()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[131,52] cannot find symbol
+  symbol:   method getContent()
+  location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[148,63] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[151,59] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message.Function
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[157,50] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[161,30] cannot find symbol
+  symbol:   method getMemoryWindow()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[162,30] cannot find symbol
+  symbol:   method setStatus(java.lang.String)
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[163,30] cannot find symbol
+  symbol:   method setPendingToolCallId(java.lang.String)
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[166,60] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[184,29] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.engine.service.EngineOrchestrator
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[188,30] cannot find symbol
+  symbol:   method getMemoryWindow()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[188,60] cannot find symbol
+  symbol:   method builder()
+  location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[192,30] cannot find symbol
+  symbol:   method setStatus(java.lang.String)
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[26,32] cannot find symbol
+  symbol:   method getModel()
+  location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[27,16] cannot find symbol
+  symbol:   method setStream(boolean)
+  location: variable request of type com.ai4kb.backend.engine.model.openai.OpenAiChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[29,62] cannot find symbol
+  symbol:   method getBaseUrl()
+  location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[33,60] cannot find symbol
+  symbol:   method getApiKey()
+  location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[44,25] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.engine.service.LlmClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/ConversationService.java:[22,42] cannot find symbol
+  symbol:   method getConversationId()
+  location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/ConversationService.java:[32,42] cannot find symbol
+  symbol:   method getToolCallId()
+  location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[134,9] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[143,38] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[144,33] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[309,9] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[316,21] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[318,25] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[323,39] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[29,33] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[35,9] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[38,21] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[45,21] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/MockAgentProcessor.java:[16,9] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.rag.processor.impl.MockAgentProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[111,33] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[130,21] cannot find symbol
+  symbol:   variable log
+  location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;34mINFO[m] 80 errors 
+[[1;34mINFO[m] -------------------------------------------------------------
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;31mBUILD FAILURE[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  1.496 s
+[[1;34mINFO[m] Finished at: 2026-03-20T18:14:16+08:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;31mERROR[m] Failed to execute goal [32morg.apache.maven.plugins:maven-compiler-plugin:3.11.0:compile[m [1m(default-compile)[m on project [36mbackend[m: [1;31mCompilation failure[m: Compilation failure: 
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[3,39] cannot access com.ai4kb.backend.common.client.RagFlowClient
+[[1;31mERROR[m]   bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java
+[[1;31mERROR[m]     file does not contain class com.ai4kb.backend.common.client.RagFlowClient
+[[1;31mERROR[m]     Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[6,37] cannot access com.ai4kb.backend.user.mapper.PermissionMapper
+[[1;31mERROR[m]   bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/PermissionMapper.java
+[[1;31mERROR[m]     file does not contain class com.ai4kb.backend.user.mapper.PermissionMapper
+[[1;31mERROR[m]     Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[7,37] cannot access com.ai4kb.backend.user.mapper.UserMapper
+[[1;31mERROR[m]   bad source file: /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/UserMapper.java
+[[1;31mERROR[m]     file does not contain class com.ai4kb.backend.user.mapper.UserMapper
+[[1;31mERROR[m]     Please remove or make sure it appears in the correct subdirectory of the sourcepath.
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[22,8] duplicate class: com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[21,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class RagFlowClient
+[[1;31mERROR[m]   location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/PermissionMapper.java:[8,8] duplicate class: com.ai4kb.backend.mapper.PermissionMapper
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/UserMapper.java:[8,8] duplicate class: com.ai4kb.backend.mapper.UserMapper
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[32,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class RagFlowClient
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[33,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class PermissionMapper
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[34,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class UserMapper
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[25,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class RagFlowClient
+[[1;31mERROR[m]   location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[26,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class UserMapper
+[[1;31mERROR[m]   location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/admin/controller/AdminController.java:[27,19] cannot find symbol
+[[1;31mERROR[m]   symbol:   class PermissionMapper
+[[1;31mERROR[m]   location: class com.ai4kb.backend.admin.controller.AdminController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[22,50] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getConversationId()
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[22,87] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getQuery()
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[28,24] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getConversationId()
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[29,24] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolCallId()
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java:[30,24] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getReviewedArgs()
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.controller.AgentController.ToolApproveRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[30,38] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[39,14] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getMemoryWindow()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[39,44] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[58,14] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setReviewedArgs(java.lang.String)
+[[1;31mERROR[m]   location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[59,14] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setApprovalStatus(java.lang.String)
+[[1;31mERROR[m]   location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[62,14] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setStatus(java.lang.String)
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[63,14] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getMemoryWindow()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[63,44] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[65,28] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolName()
+[[1;31mERROR[m]   location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[85,41] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest.Tool
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[87,53] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest.Function
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[94,54] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.openai.OpenAiChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[95,32] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getMemoryWindow()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[106,33] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getChoices()
+[[1;31mERROR[m]   location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[106,67] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getChoices()
+[[1;31mERROR[m]   location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[107,68] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getChoices()
+[[1;31mERROR[m]   location: variable response of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[108,64] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getDelta()
+[[1;31mERROR[m]   location: variable choice of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Choice
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[111,38] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolCalls()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[111,71] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolCalls()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[112,71] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolCalls()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[113,39] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getId()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[114,58] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getId()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[116,39] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getFunction()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[117,43] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getFunction()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[118,59] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getFunction()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[120,43] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getFunction()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[121,59] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getFunction()
+[[1;31mERROR[m]   location: variable tc of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[127,38] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getContent()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[128,60] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getContent()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[131,52] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getContent()
+[[1;31mERROR[m]   location: variable delta of type com.ai4kb.backend.engine.model.openai.OpenAiChatResponse.Delta
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[148,63] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message.ToolCall
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[151,59] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message.Function
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[157,50] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[161,30] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getMemoryWindow()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[162,30] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setStatus(java.lang.String)
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[163,30] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setPendingToolCallId(java.lang.String)
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[166,60] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[184,29] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.service.EngineOrchestrator
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[188,30] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getMemoryWindow()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[188,60] cannot find symbol
+[[1;31mERROR[m]   symbol:   method builder()
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.model.Message
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java:[192,30] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setStatus(java.lang.String)
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[26,32] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getModel()
+[[1;31mERROR[m]   location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[27,16] cannot find symbol
+[[1;31mERROR[m]   symbol:   method setStream(boolean)
+[[1;31mERROR[m]   location: variable request of type com.ai4kb.backend.engine.model.openai.OpenAiChatRequest
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[29,62] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getBaseUrl()
+[[1;31mERROR[m]   location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[33,60] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getApiKey()
+[[1;31mERROR[m]   location: variable config of type com.ai4kb.backend.engine.config.LlmConfigProperties
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/LlmClient.java:[44,25] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.engine.service.LlmClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/ConversationService.java:[22,42] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getConversationId()
+[[1;31mERROR[m]   location: variable state of type com.ai4kb.backend.engine.model.ConversationState
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/ConversationService.java:[32,42] cannot find symbol
+[[1;31mERROR[m]   symbol:   method getToolCallId()
+[[1;31mERROR[m]   location: variable draft of type com.ai4kb.backend.engine.model.ToolCallDraft
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[134,9] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[143,38] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[144,33] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[309,9] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[316,21] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[318,25] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/common/client/RagFlowClient.java:[323,39] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.client.RagFlowClient
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[29,33] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[35,9] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[38,21] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/knowledge/controller/DocumentController.java:[45,21] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.knowledge.controller.DocumentController
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/MockAgentProcessor.java:[16,9] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.MockAgentProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[111,33] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java:[130,21] cannot find symbol
+[[1;31mERROR[m]   symbol:   variable log
+[[1;31mERROR[m]   location: class com.ai4kb.backend.rag.processor.impl.RagDirectProcessor
+[[1;31mERROR[m] -> [1m[Help 1][m
+[[1;31mERROR[m] 
+[[1;31mERROR[m] To see the full stack trace of the errors, re-run Maven with the [1m-e[m switch.
+[[1;31mERROR[m] Re-run Maven using the [1m-X[m switch to enable full debug logging.
+[[1;31mERROR[m] 
+[[1;31mERROR[m] For more information about the errors and possible solutions, please read the following articles:
+[[1;31mERROR[m] [1m[Help 1][m http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

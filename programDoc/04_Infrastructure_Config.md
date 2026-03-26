@@ -172,6 +172,51 @@ sudo docker compose -f deploy/docker-compose-ragflow.yml logs -f backend
 curl http://localhost:8083/api/admin/datasets  # 期望返回 RAGFlow 知识库列表
 ```
 
+### 6.5 Agent 架构改造后的 Docker 部署约定
+
+后端逻辑改造为模块化结构（`rag/knowledge/engine/user/admin/skill`）后，部署方式仍保持 Docker Compose，不新增外部端口。
+
+**关键原则**:
+*   仅重建 `backend` 容器即可使新模块与新 API 生效。
+*   容器内后端继续通过 `RAGFLOW_BASE_URL=http://ragflow-server:80` 调用 RAGFlow。
+*   `RAGFLOW_API_KEY` 通过 compose 环境变量注入，禁止写死在代码中。
+
+**重建命令**:
+```bash
+sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend
+```
+
+**联调命令**:
+```bash
+# 后端日志（关注鉴权、审批流、工具调用）
+sudo docker compose -f deploy/docker-compose-ragflow.yml logs -f backend
+
+# 确认后端容器环境变量
+sudo docker exec ragflow-backend printenv | grep -E 'RAGFLOW_BASE_URL|RAGFLOW_API_KEY|MYSQL_HOST|MYSQL_PORT'
+```
+
+### 6.6 业务数据库（ai4kb）迁移约定
+
+新增 `t_user.password/name`、`t_audit_log` 等字段与表后，采用“先建表/改表，再重启后端”的顺序。
+
+**执行步骤**:
+```bash
+# 1) 将迁移脚本复制进 mysql 容器
+sudo docker cp /tmp/ai4kb_migration.sql ragflow-mysql:/tmp/ai4kb_migration.sql
+
+# 2) 在容器内执行迁移
+sudo docker exec ragflow-mysql mysql -uroot -pinfini_rag_flow ai4kb -e "source /tmp/ai4kb_migration.sql;"
+
+# 3) 重建后端
+sudo docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend
+```
+
+**校验命令**:
+```bash
+sudo docker exec ragflow-mysql mysql -uroot -pinfini_rag_flow ai4kb -e "DESCRIBE t_user;"
+sudo docker exec ragflow-mysql mysql -uroot -pinfini_rag_flow ai4kb -e "SHOW TABLES LIKE 't_audit_log';"
+```
+
 ### 6.4 RAGFlow UI 模型配置（对接 Xinference）
 本节用于把 **Xinference** 已启动的三个模型（LLM/Embedding/Rerank）接入 **RAGFlow**，让 RAGFlow 能完成“解析 -> 向量化 -> 重排 -> 生成回答”的全流程。
 

@@ -1,12 +1,12 @@
 # API 接口规范 (API Interface Spec)
 
-本系统采用 RESTful 风格接口，Base URL 为 `/api/v1`。
+本系统采用 RESTful 风格接口，包含两组主路径：`/api/v1`（Agent）与 `/api`（Admin/User/RAG）。
 后端端口：`8083`（映射到 Docker 内部 8083）。
 
 ## 1. 认证鉴权 (Auth)
 
 ### 1.1 获取 Token
-*   **URL**: `/api/v1/auth/login`
+*   **URL**: `/api/user/auth/login`
 *   **Method**: `POST`
 *   **Request**:
     ```json
@@ -14,8 +14,13 @@
     ```
 *   **Response**:
     ```json
-    { "code": 200, "data": { "token": "jwt-token-xxx" } }
+    {
+      "token": "jwt-token-xxx",
+      "expires_at": 1774442400,
+      "user": { "id": 1, "username": "admin", "role": "admin" }
+    }
     ```
+*   **鉴权头**: 业务接口统一使用 `Authorization: Bearer <token>`。
 
 ## 2. 知识库管理 (Knowledge Base)
 
@@ -169,7 +174,7 @@
 *   **URL**: `/completions`
 *   **Method**: `POST`
 *   **Headers**:
-    *   `X-User-Name`: `zhangsan` (必填，标识当前用户)
+    *   `Authorization`: `Bearer <jwt-token>`（必填）
 *   **Body**:
     ```json
     {
@@ -189,11 +194,220 @@
 # 1. Admin: 给 zhangsan 分配知识库权限
 curl -X POST http://localhost:8083/api/admin/permission/grant \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin_token>" \
   -d '{"username": "zhangsan", "resource_type": "DATASET", "resource_id": "你的ragflow_dataset_id"}'
 
 # 2. User: zhangsan 发起提问
 curl -X POST http://localhost:8083/api/chat/completions \
   -H "Content-Type: application/json" \
-  -H "X-User-Name: zhangsan" \
+  -H "Authorization: Bearer <user_token>" \
   -d '{"question": "你好", "stream": true}'
 ```
+
+## 8. Agent 工作流接口（意图识别 + 工具调用 + 审批 + 恢复）
+
+本节为新设计接口，面向“多轮联动 + 人工审查工具参数 + 确认后执行”的完整 Agent 流程。
+
+### 8.1 发起 Agent 对话（流式）
+*   **URL**: `/api/v1/agent/chat/stream`
+*   **Method**: `POST`
+*   **Headers**:
+    *   `Authorization`: `Bearer <jwt-token>`（必填）
+*   **Request**:
+    ```json
+    {
+      "conversationId": "conv-001",
+      "query": "根据招标要求生成投标函并发给项目经理",
+      "adjustmentInstruction": "把第2步改成先检索规范再执行技能",
+      "editedSteps": [],
+      "rerunMode": "AUTO",
+      "restartFromStep": 1,
+      "replanOnly": false
+    }
+    ```
+*   **SSE 事件类型**:
+    *   `analysis_plan`: 本轮分析计划（deep_thinking/question_type/steps/summary）
+    *   `analysis_step`: 执行过程步骤流（含 waiting_approval、streaming、completed）
+    *   `analysis_summary`: 本轮分析汇总（plan_id/version/step_count/final_answer）
+    *   `message`: 结构化回答（RAG/CHAT 结果与引用）
+    *   `token`: 普通流式文本
+    *   `tool_draft`: 识别到 Skill 且给出参数草稿（等待审批）
+    *   `tool_result`: 审批执行后的工具结果摘要
+    *   `clarify`: 低置信度澄清引导
+    *   `error`: 异常事件
+    *   `done`: 本轮结束
+*   **tool_draft 示例**:
+    ```json
+    {
+      "event": "tool_draft",
+      "conversation_id": "conv-001",
+      "tool_call_id": "tc-1001",
+      "tool_name": "send_email",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "to": { "type": "string", "format": "email" },
+          "subject": { "type": "string", "minLength": 1 },
+          "content": { "type": "string", "minLength": 1 }
+        },
+        "required": ["to", "content"]
+      },
+      "param_source": "rag",
+      "draft_args": {
+        "to": "pm@company.com",
+        "subject": "投标函草案",
+        "content": "..."
+      }
+    }
+    ```
+
+### 8.2 提交审批并恢复执行（流式）
+*   **URL**: `/api/v1/agent/tool/approve`
+*   **Method**: `POST`
+*   **Headers**:
+    *   `Authorization`: `Bearer <jwt-token>`（必填）
+*   **Request**:
+    ```json
+    {
+      "conversationId": "conv-001",
+      "toolCallId": "tc-1001",
+      "reviewedArgs": "{\"to\":\"pm@company.com\",\"subject\":\"请审阅：投标函（修订版）\",\"content\":\"人工修改后的内容\"}"
+    }
+    ```
+*   **Response**:
+    *   Content-Type: `text/event-stream`
+    *   事件顺序通常为：`tool_result` -> `token/message` -> `done`
+
+### 8.3 工具目录与文件接口（当前实现）
+*   **统一要求**: 所有接口都需要 `Authorization: Bearer <jwt-token>`
+*   **GET** `/api/v1/agent/tool/catalog`：可用工具清单
+*   **POST** `/api/v1/agent/tool/upload`：上传工具输入文件（multipart）
+*   **GET** `/api/v1/agent/tool/files?toolCallId=...`：查询已上传文件
+*   **GET** `/api/v1/agent/tool/result/{fileId}`：下载工具输出文件
+
+## 9. 用户与权限管理接口（RBAC）
+
+### 9.1 登录
+*   **URL**: `/api/user/auth/login`
+*   **Method**: `POST`
+*   **Request**:
+    ```json
+    { "username": "admin01", "password": "***" }
+    ```
+*   **Response**:
+    ```json
+    {
+      "token": "jwt-xxx",
+      "expires_at": 1774442400,
+      "user": { "id": 2, "username": "admin01", "role": "admin" }
+    }
+    ```
+
+### 9.2 超级管理员创建管理员
+*   **URL**: `/api/admin/users/admin`
+*   **Method**: `POST`
+*   **权限**: `super_admin`
+*   **Request**:
+    ```json
+    { "username": "admin02", "password": "***", "name": "李四" }
+    ```
+
+### 9.3 管理员创建普通用户
+*   **URL**: `/api/admin/users/normal`
+*   **Method**: `POST`
+*   **权限**: `admin` / `super_admin`
+*   **Request**:
+    ```json
+    { "username": "user01", "password": "***", "name": "王五" }
+    ```
+
+### 9.4 分配知识库权限
+*   **URL**: `/api/admin/permissions/datasets`
+*   **Method**: `POST`
+*   **Request**:
+    ```json
+    {
+      "target_user_id": 10,
+      "dataset_id": "kb-001",
+      "action": "READ"
+    }
+    ```
+
+### 9.5 分配技能权限
+*   **URL**: `/api/admin/permissions/skills`
+*   **Method**: `POST`
+*   **Request**:
+    ```json
+    {
+      "target_user_id": 10,
+      "skill_code": "send_email",
+      "action": "USE"
+    }
+    ```
+
+### 9.6 超级管理员审计查询（路由样本）
+*   **URL**: `/api/admin/route-samples`
+*   **Method**: `GET`
+*   **权限**: `super_admin`
+*   **Query**:
+    *   `limit`: int（默认 100，最大 500）
+    *   `userId`: long（可选）
+    *   `source`: string（可选）
+*   **说明**: 返回路由决策样本，用于审计查询与路由策略复盘。
+
+### 9.7 超级管理员审计来源枚举
+*   **URL**: `/api/admin/route-samples/sources`
+*   **Method**: `GET`
+*   **权限**: `super_admin`
+*   **说明**: 动态返回样本来源类型（如 `PLANNER_ONLY`、`LOCAL_DIRECT`）。
+
+### 9.8 超级管理员管理员资产总览
+*   **URL**: `/api/admin/super/ownership-overview`
+*   **Method**: `GET`
+*   **权限**: `super_admin`
+*   **说明**: 聚合返回“管理员 -> 其创建/拥有的知识库 -> 文档数量 -> 已授权用户列表（含授权时间） -> 会话总览（含对话记录与记录时间）”视图。
+
+### 9.9 用户会话新建
+*   **URL**: `/api/user/conversations`
+*   **Method**: `POST`
+*   **权限**: 已登录用户
+*   **Request**:
+    ```json
+    { "title": "新对话" }
+    ```
+*   **说明**: 创建会话并返回会话信息（`id/userId/title/createdAt/updatedAt`）。
+
+### 9.10 用户会话列表
+*   **URL**: `/api/user/conversations`
+*   **Method**: `GET`
+*   **权限**: 已登录用户
+*   **说明**: 返回当前用户会话列表（按更新时间倒序）。
+
+### 9.11 用户会话消息写入
+*   **URL**: `/api/user/conversations/{conversationId}/messages`
+*   **Method**: `POST`
+*   **权限**: 已登录用户
+*   **Request**:
+    ```json
+    {
+      "role": "user",
+      "content": "请解释一下半面积计算",
+      "conversationTitle": "半面积问题"
+    }
+    ```
+*   **说明**: 向指定会话追加消息；若会话不存在且 `conversationId` 合法，则自动补建会话并写入消息。
+
+### 9.12 用户会话消息列表
+*   **URL**: `/api/user/conversations/{conversationId}/messages`
+*   **Method**: `GET`
+*   **权限**: 已登录用户
+*   **说明**: 返回指定会话消息明细（按消息写入顺序）。
+
+## 10. 权限规则（关键约束）
+
+1. 管理员创建的知识库对普通用户“外层可见”（可见名称与描述）。
+2. 普通用户对管理员知识库默认仅可 `READ_META`，不可查看内容（Chunk/原文）且不可修改、删除。
+3. 超级管理员可进行全部操作，包括用户角色变更、资源授权、审计查询。
+4. 审计查询接口（`/api/admin/route-samples*`）与管理员资产总览接口（`/api/admin/super/ownership-overview`）仅 `super_admin` 可访问。
+5. 超级管理员可创建管理员账号；管理员与超级管理员均可创建普通用户并分配资源权限。
+6. 所有查询、工具调用、审批操作均写入审计日志 `t_audit_log`。

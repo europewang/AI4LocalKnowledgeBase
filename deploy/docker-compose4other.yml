@@ -4,48 +4,70 @@ services:
   # ==========================================
   ai-tender-app:
     build:
-      context: ../
+      context: ../backend
       dockerfile: Dockerfile
     container_name: ai-tender-app
     ports:
-      - "8080:8080"
+      - "8080:8083"
     environment:
       - VECTOR_PROVIDER=milvus
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ai_tender_db
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=
+      - LLM_BASE_URL=http://host.docker.internal:8085/v1
+      - LLM_MODEL=deepseek-r1-distill-qwen-14b
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
     depends_on:
       - postgres
+      - redis
       - milvus-standalone
     networks:
       - ai-tender-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ==========================================
   # 2. Debug应用实例 (Debug Application)
   # ==========================================
   ai-tender-app-debug:
     build:
-      context: ../
+      context: ../backend
       dockerfile: Dockerfile
     container_name: ai-tender-app-debug
     ports:
-      - "8081:8080"  # 使用不同的业务端口
+      - "8081:8083"  # 使用不同的业务端口
       - "5005:5005"  # Debug端口
     environment:
       - VECTOR_PROVIDER=milvus
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ai_tender_db
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_PASSWORD=
+      - LLM_BASE_URL=http://host.docker.internal:8085/v1
+      - LLM_MODEL=deepseek-r1-distill-qwen-14b
       - MILVUS_HOST=milvus-standalone
       - MILVUS_PORT=19530
     entrypoint: ["java", "-jar", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", "app.jar"]
     depends_on:
       - postgres
+      - redis
       - milvus-standalone
     networks:
       - ai-tender-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ==========================================
   # 3. 辅助服务 (Sidecar Services)
@@ -90,6 +112,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-tender-net
+
+  redis:
+    image: valkey/valkey:8
+    pull_policy: if_not_present
+    container_name: ai-tender-redis
     networks:
       - ai-tender-net
 

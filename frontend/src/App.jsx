@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Square, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings, Download, Plus } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -16,16 +16,108 @@ function cn(...inputs) {
 
 // --- API Helpers ---
 const API_BASE = '/api'
+const AUTH_SESSION_KEY = 'ai4kb_auth_session'
+
+function loadAuthSession() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw)
+    if (!parsed?.token || !parsed?.user?.role || !parsed?.user?.username) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveAuthSession(session) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
+}
+
+function clearAuthSession() {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(AUTH_SESSION_KEY)
+}
+
+function isAdminLikeRole(role) {
+  const normalizedRole = String(role || '').toLowerCase()
+  return normalizedRole === 'admin' || normalizedRole === 'super_admin'
+}
+
+function isSuperAdminRole(role) {
+  return String(role || '').toLowerCase() === 'super_admin'
+}
+
+function getAuthToken() {
+  return loadAuthSession()?.token || ''
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {})
+  const token = getAuthToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers
+  })
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ai4kb-auth-expired'))
+    }
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (res.status === 403) {
+    throw new Error('当前账号无权限执行该操作')
+  }
+  return res
+}
+
+async function loginByPassword(username, password) {
+  const res = await fetch(`${API_BASE}/user/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  })
+  if (!res.ok) {
+    let message = '登录失败'
+    try {
+      const payload = await res.json()
+      if (payload?.message) {
+        message = payload.message
+      }
+    } catch (error) {
+      if (error) {
+        message = '登录失败'
+      }
+    }
+    throw new Error(message)
+  }
+  return res.json()
+}
 
 async function fetchDatasets() {
-  const res = await fetch(`${API_BASE}/admin/datasets`)
+  const res = await apiFetch('/admin/datasets')
   if (!res.ok) throw new Error('Failed to fetch datasets')
   const json = await res.json()
   return json.data || []
 }
 
 async function createDataset(name) {
-  const res = await fetch(`${API_BASE}/admin/datasets`, {
+  const res = await apiFetch('/admin/datasets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
@@ -34,24 +126,8 @@ async function createDataset(name) {
   return res.json()
 }
 
-async function grantPermission(username, datasetId) {
-  const res = await fetch(`${API_BASE}/admin/permission/grant`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username,
-      resource_type: 'DATASET',
-      resource_id: datasetId
-    })
-  })
-  if (!res.ok) throw new Error('Failed to grant permission')
-  const data = await res.json()
-  if (data.status !== 'ok') throw new Error(data.status || 'Unknown error')
-  return data
-}
-
 async function deleteDataset(id) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${id}`, {
+  const res = await apiFetch(`/admin/datasets/${id}`, {
     method: 'DELETE'
   })
   if (!res.ok) throw new Error('Failed to delete dataset')
@@ -59,7 +135,7 @@ async function deleteDataset(id) {
 }
 
 async function deleteDatasets(ids) {
-  const res = await fetch(`${API_BASE}/admin/datasets`, {
+  const res = await apiFetch('/admin/datasets', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids })
@@ -74,7 +150,7 @@ async function updateDataset(id, name, description, language, permission, parser
   if (permission) body.permission = permission
   if (parser_config) body.parser_config = parser_config
 
-  const res = await fetch(`${API_BASE}/admin/datasets/${id}`, {
+  const res = await apiFetch(`/admin/datasets/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -84,7 +160,7 @@ async function updateDataset(id, name, description, language, permission, parser
 }
 
 async function updateDocument(datasetId, docId, name) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents/${docId}`, {
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents/${docId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
@@ -94,19 +170,105 @@ async function updateDocument(datasetId, docId, name) {
 }
 
 async function fetchUsers() {
-  const res = await fetch(`${API_BASE}/admin/users`)
+  const res = await apiFetch('/admin/users')
   if (!res.ok) throw new Error('Failed to fetch users')
   return res.json()
 }
 
 async function fetchUserPermissions(username) {
-  const res = await fetch(`${API_BASE}/admin/permission/${username}`)
+  const res = await apiFetch(`/admin/permission/${username}`)
   if (!res.ok) throw new Error('Failed to fetch permissions')
   return res.json()
 }
 
+async function fetchRouteSamples({ limit = 100, userId, source } = {}) {
+  const params = new URLSearchParams()
+  params.set('limit', String(limit))
+  if (userId !== undefined && userId !== null && String(userId).trim()) {
+    params.set('userId', String(userId).trim())
+  }
+  if (source && String(source).trim()) {
+    params.set('source', String(source).trim())
+  }
+  const res = await apiFetch(`/admin/route-samples?${params.toString()}`)
+  if (!res.ok) throw new Error('Failed to fetch route samples')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function fetchRouteSampleSources() {
+  const res = await apiFetch('/admin/route-samples/sources')
+  if (!res.ok) throw new Error('Failed to fetch route sample sources')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function fetchSuperAdminOverview() {
+  const res = await apiFetch('/admin/super/ownership-overview')
+  if (!res.ok) throw new Error('Failed to fetch super admin overview')
+  const data = await res.json()
+  return data || {}
+}
+
+async function createConversation(title = '') {
+  const res = await apiFetch('/user/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title })
+  })
+  if (!res.ok) throw new Error('创建会话失败')
+  return res.json()
+}
+
+async function fetchConversations() {
+  const res = await apiFetch('/user/conversations')
+  if (!res.ok) throw new Error('加载会话列表失败')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function renameConversation(conversationId, title) {
+  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title })
+  })
+  if (!res.ok) throw new Error('重命名会话失败')
+  return res.json()
+}
+
+async function deleteConversation(conversationId) {
+  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'DELETE'
+  })
+  if (!res.ok) throw new Error('删除会话失败')
+  return res.json()
+}
+
+async function fetchConversationMessages(conversationId) {
+  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}/messages`)
+  if (!res.ok) throw new Error('加载会话消息失败')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function saveConversationMessage(conversationId, role, content, conversationTitle = '', messagePayload = '') {
+  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      role,
+      content,
+      conversationTitle,
+      messagePayload
+    })
+  })
+  if (!res.ok) throw new Error('保存会话消息失败')
+  return res.json()
+}
+
 async function syncPermissions(username, datasetIds) {
-  const res = await fetch(`${API_BASE}/admin/permission/sync`, {
+  const res = await apiFetch('/admin/permission/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -119,7 +281,7 @@ async function syncPermissions(username, datasetIds) {
 }
 
 async function fetchDocuments(datasetId, page = 1, pageSize = 100) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents?page=${page}&page_size=${pageSize}&t=${Date.now()}`)
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents?page=${page}&page_size=${pageSize}&t=${Date.now()}`)
   if (!res.ok) throw new Error('Failed to fetch documents')
   const json = await res.json()
   // Handle both array and object response (RAGFlow returns { data: { docs: [...] } })
@@ -133,7 +295,7 @@ async function uploadDocument(datasetId, file) {
   const formData = new FormData()
   formData.append('file', file)
   
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents`, {
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents`, {
     method: 'POST',
     body: formData
   })
@@ -142,7 +304,7 @@ async function uploadDocument(datasetId, file) {
 }
 
 async function deleteDocuments(datasetId, ids) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents`, {
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids })
@@ -152,7 +314,7 @@ async function deleteDocuments(datasetId, ids) {
 }
 
 async function runDocuments(datasetId, docIds) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents/run`, {
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ doc_ids: docIds })
@@ -162,16 +324,56 @@ async function runDocuments(datasetId, docIds) {
 }
 
 async function getDocumentFile(datasetId, docId) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents/${docId}/file`)
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents/${docId}/file`)
   if (!res.ok) throw new Error('Failed to fetch document file')
   return res.blob()
 }
 
 async function fetchChunks(datasetId, docId, page = 1, pageSize = 10000) {
-  const res = await fetch(`${API_BASE}/admin/datasets/${datasetId}/documents/${docId}/chunks?page=${page}&page_size=${pageSize}`)
+  const res = await apiFetch(`/admin/datasets/${datasetId}/documents/${docId}/chunks?page=${page}&page_size=${pageSize}`)
   if (!res.ok) throw new Error('Failed to fetch chunks')
   const json = await res.json()
   return json.data || []
+}
+
+async function startAgentStream(conversationId, query, options = {}) {
+  const payload = {
+    conversationId,
+    query,
+    adjustmentInstruction: options.adjustmentInstruction || '',
+    editedSteps: Array.isArray(options.editedSteps) ? options.editedSteps : [],
+    rerunMode: options.rerunMode || 'AUTO',
+    restartFromStep: Number.isFinite(Number(options.restartFromStep)) ? Number(options.restartFromStep) : 1,
+    replanOnly: !!options.replanOnly
+  }
+  const res = await apiFetch('/v1/agent/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res
+}
+
+async function uploadToolInputFile(toolCallId, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiFetch(`/v1/agent/tool/upload?toolCallId=${encodeURIComponent(toolCallId)}`, {
+    method: 'POST',
+    body: formData
+  })
+  if (!res.ok) throw new Error(`上传失败: HTTP ${res.status}`)
+  return res.json()
+}
+
+async function approveToolCall(conversationId, toolCallId, reviewedArgs) {
+  const res = await apiFetch('/v1/agent/tool/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, toolCallId, reviewedArgs })
+  })
+  if (!res.ok) throw new Error(`审批失败: HTTP ${res.status}`)
+  return res
 }
 
 // --- Components ---
@@ -188,7 +390,7 @@ function ChunkHighlights({ chunk, scale, pageNumber }) {
   const rects = chunk.positions
     .filter(pos => pos[0] === pageNumber)
     .map((pos, i) => {
-      const [p, x1, x2, y1, y2] = pos
+      const [, x1, x2, y1, y2] = pos
       // Calculate width and height
       const width = (x2 - x1) * scale
       const height = (y2 - y1) * scale
@@ -220,7 +422,6 @@ function ChunkHighlights({ chunk, scale, pageNumber }) {
 function DocumentViewer({ doc, datasetId, onClose }) {
   const [chunks, setChunks] = useState([])
   const [loadingChunks, setLoadingChunks] = useState(false)
-  const [pageNumber, setPageNumber] = useState(1)
   const [numPages, setNumPages] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [scale, setScale] = useState(1.0)
@@ -428,6 +629,34 @@ function DocumentViewer({ doc, datasetId, onClose }) {
 
 
 function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    if (!username.trim() || !password.trim() || submitting) {
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    try {
+      await onLogin({
+        username: username.trim(),
+        password
+      })
+    } catch (loginError) {
+      setError(loginError?.message || '登录失败，请检查账号密码')
+      setSubmitting(false)
+    }
+  }
+
+  const fillDemoAccount = (name) => {
+    setUsername(name)
+    setPassword('ChangeMe123!')
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-100">
       <div className="w-full max-w-md p-8 bg-white rounded-xl shadow-lg">
@@ -437,48 +666,71 @@ function LoginScreen({ onLogin }) {
           </div>
         </div>
         <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">AI4KB 知识库系统</h2>
-        <p className="text-center text-slate-500 mb-8">请选择登录角色</p>
-        
-        <div className="space-y-4">
-          <button
-            onClick={() => onLogin('admin')}
-            className="w-full flex items-center justify-center gap-3 p-4 border-2 border-slate-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
-          >
-            <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-              <Shield className="w-5 h-5 text-slate-600 group-hover:text-blue-700" />
-            </div>
-            <div className="text-left flex-1">
-              <div className="font-semibold text-slate-700">管理员 (Admin)</div>
-              <div className="text-xs text-slate-500">管理知识库与用户权限</div>
-            </div>
-          </button>
+        <p className="text-center text-slate-500 mb-6">请输入账号密码登录</p>
 
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">用户名</label>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+              placeholder="请输入用户名"
+              autoComplete="username"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">密码</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+              placeholder="请输入密码"
+              autoComplete="current-password"
+            />
+          </div>
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
           <button
-            onClick={() => onLogin('user')}
-            className="w-full flex items-center justify-center gap-3 p-4 border-2 border-slate-100 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group"
+            type="submit"
+            disabled={submitting || !username.trim() || !password.trim()}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-emerald-200 transition-colors">
-              <User className="w-5 h-5 text-slate-600 group-hover:text-emerald-700" />
-            </div>
-            <div className="text-left flex-1">
-              <div className="font-semibold text-slate-700">普通用户 (User)</div>
-              <div className="text-xs text-slate-500">访问知识库进行智能问答</div>
-            </div>
+            {submitting ? <Loader2 className="animate-spin" size={16} /> : <Shield size={16} />}
+            登录
           </button>
+        </form>
+        <div className="mt-5 border-t pt-4">
+          <p className="text-xs text-slate-500 mb-2">快捷填充测试账号（默认密码 ChangeMe123!）</p>
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={() => fillDemoAccount('superadmin')} className="text-xs px-2 py-1.5 rounded border border-slate-200 hover:bg-slate-100 transition-colors">superadmin</button>
+            <button onClick={() => fillDemoAccount('admin')} className="text-xs px-2 py-1.5 rounded border border-slate-200 hover:bg-slate-100 transition-colors">admin</button>
+            <button onClick={() => fillDemoAccount('zhangsan')} className="text-xs px-2 py-1.5 rounded border border-slate-200 hover:bg-slate-100 transition-colors">zhangsan</button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
-  const menuItems = role === 'admin' ? [
+function Sidebar({ role, username, activeTab, setActiveTab, onLogout }) {
+  const menuItems = isSuperAdminRole(role) ? [
+    { id: 'super_overview', label: '管理员总览', icon: Users },
+    { id: 'datasets', label: '知识库管理', icon: Database },
+    { id: 'permissions', label: '权限分配', icon: Lock },
+    { id: 'route_samples', label: '审计查询', icon: Brain },
+    { id: 'chat', label: '调试对话', icon: MessageSquare },
+  ] : (isAdminLikeRole(role) ? [
     { id: 'datasets', label: '知识库管理', icon: Database },
     { id: 'permissions', label: '权限分配', icon: Lock },
     { id: 'chat', label: '调试对话', icon: MessageSquare },
   ] : [
     { id: 'chat', label: '智能问答', icon: MessageSquare },
-  ]
+  ])
 
   return (
     <div className="w-64 bg-slate-900 text-white flex flex-col h-screen shrink-0">
@@ -512,12 +764,12 @@ function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
         <div className="flex items-center gap-3 px-4 py-2 mb-4">
           <div className={cn(
             "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-            role === 'admin' ? "bg-purple-500" : "bg-emerald-500"
+            isAdminLikeRole(role) ? "bg-purple-500" : "bg-emerald-500"
           )}>
-            {role === 'admin' ? 'AD' : 'US'}
+            {isAdminLikeRole(role) ? 'AD' : 'US'}
           </div>
           <div className="overflow-hidden">
-            <p className="text-sm font-medium truncate">{role === 'admin' ? 'Administrator' : 'zhangsan'}</p>
+            <p className="text-sm font-medium truncate">{username}</p>
             <p className="text-xs text-slate-500 uppercase">{role}</p>
           </div>
         </div>
@@ -809,7 +1061,7 @@ function DatasetDetail({ dataset, onBack, onUpdate }) {
     isSubmitting: false
   })
 
-  const loadDocs = () => {
+  const loadDocs = useCallback(() => {
     // Only set loading on initial load to avoid flickering during polling
     if (docs.length === 0) setLoading(true)
     setSelectedDocs([]) // Reset selection on reload
@@ -817,7 +1069,7 @@ function DatasetDetail({ dataset, onBack, onUpdate }) {
       .then(data => setDocs(Array.isArray(data) ? data : []))
       .catch(console.error)
       .finally(() => setLoading(false))
-  }
+  }, [dataset.id, docs.length])
 
   useEffect(() => {
     loadDocs()
@@ -831,7 +1083,7 @@ function DatasetDetail({ dataset, onBack, onUpdate }) {
           }).catch(console.error)
       }, 5000)
     return () => clearInterval(interval)
-  }, [dataset.id])
+  }, [dataset.id, loadDocs])
 
   const handleUpdateSettings = async (newSettings) => {
     setSettingsModal(prev => ({ ...prev, isSubmitting: true }))
@@ -1196,6 +1448,9 @@ function DatasetCard({ dataset, onClick, onDelete, onRename, selected, onSelect,
       
       <h3 className="font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors line-clamp-1 pr-14">{dataset.name}</h3>
       <p className="text-sm text-slate-400 mb-4 line-clamp-2">{dataset.description || '暂无描述'}</p>
+      <div className="text-xs text-slate-500 mb-3">
+        创建人：{dataset.creatorUsername || dataset.creator_username || dataset.creatorUserName || dataset.owner_username || dataset.ownerUsername || dataset.created_by || '未知'}
+      </div>
       
       <div className="flex items-center justify-between text-xs text-slate-500 border-t pt-4">
         <span className="flex items-center gap-1">
@@ -1215,7 +1470,6 @@ function DatasetManager() {
   const [datasets, setDatasets] = useState([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [deleting, setDeleting] = useState(null)
   const [newDatasetName, setNewDatasetName] = useState('')
   const [viewingDataset, setViewingDataset] = useState(null)
   const [selectedDatasets, setSelectedDatasets] = useState([])
@@ -1258,7 +1512,6 @@ function DatasetManager() {
   const handleDelete = async (id, e) => {
     e.stopPropagation()
     if (!window.confirm('确定要删除这个知识库吗？此操作不可恢复。')) return
-    setDeleting(id)
     try {
       // Optimistic update to immediately remove from UI
       setDatasets(prev => prev.filter(d => d.id !== id))
@@ -1268,8 +1521,6 @@ function DatasetManager() {
     } catch (e) {
       alert('删除失败: ' + e.message)
       loadData() // Revert if failed
-    } finally {
-      setDeleting(null)
     }
   }
 
@@ -1598,18 +1849,536 @@ function PermissionManager() {
   )
 }
 
+function RouteSampleManager() {
+  const [samples, setSamples] = useState([])
+  const [sourceOptions, setSourceOptions] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [limit, setLimit] = useState('100')
+  const [userId, setUserId] = useState('')
+  const [source, setSource] = useState('')
+
+  const loadSamples = async (nextFilters) => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetchRouteSamples(nextFilters)
+      setSamples(data)
+    } catch (e) {
+      setError(e.message || '加载失败')
+      setSamples([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSamples({ limit: 100 })
+    fetchRouteSampleSources()
+      .then(data => setSourceOptions(data))
+      .catch(() => setSourceOptions([]))
+  }, [])
+
+  const normalizedLimit = () => {
+    const n = Number.parseInt(limit, 10)
+    if (Number.isNaN(n)) return 100
+    return Math.max(1, Math.min(n, 500))
+  }
+
+  const handleSearch = () => {
+    loadSamples({
+      limit: normalizedLimit(),
+      userId: userId.trim() ? userId.trim() : undefined,
+      source: source.trim() ? source.trim() : undefined
+    })
+  }
+
+  const handleReset = () => {
+    setLimit('100')
+    setUserId('')
+    setSource('')
+    loadSamples({ limit: 100 })
+  }
+
+  const formatTime = (value) => {
+    if (!value) return '-'
+    const dt = new Date(value)
+    if (Number.isNaN(dt.getTime())) return String(value)
+    return dt.toLocaleString()
+  }
+
+  const csvEscape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
+
+  const handleExportCsv = () => {
+    const headers = [
+      'id', 'created_at', 'conversation_id', 'user_id', 'source',
+      'chosen_route', 'chosen_confidence', 'chosen_tool',
+      'local_route', 'local_confidence',
+      'planner_route', 'planner_confidence', 'query_text'
+    ]
+    const rows = samples.map(item => ([
+      item.id,
+      item.createdAt,
+      item.conversationId,
+      item.userId,
+      item.source,
+      item.chosenRoute,
+      item.chosenConfidence,
+      item.chosenTool,
+      item.localRoute,
+      item.localConfidence,
+      item.plannerRoute,
+      item.plannerConfidence,
+      item.queryText
+    ].map(csvEscape).join(',')))
+    const content = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const stamp = new Date().toISOString().replaceAll(':', '-')
+    link.href = url
+    link.download = `route_samples_${stamp}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="p-8 h-full overflow-y-auto">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">路由样本</h2>
+            <p className="text-sm text-slate-500 mt-1">查看 Planner 与本地 Router 决策样本，支持筛选与导出</p>
+          </div>
+          <button
+            onClick={handleExportCsv}
+            disabled={samples.length === 0}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Download size={16} />
+            导出 CSV
+          </button>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">条数</label>
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              className="w-28 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">用户 ID</label>
+            <input
+              type="text"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              placeholder="如 1"
+              className="w-36 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">来源</label>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className="w-48 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">全部来源</option>
+              {sourceOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <Search size={16} />
+            查询
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={loading}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw size={16} />
+            重置
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          {error && (
+            <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
+              {error}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr className="text-slate-600">
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">时间</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">会话</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">用户</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">来源</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">最终</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">本地候选</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Planner候选</th>
+                  <th className="px-3 py-2 text-left font-semibold">Query</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={8}>
+                      <div className="inline-flex items-center gap-2">
+                        <Loader2 className="animate-spin" size={16} />
+                        加载中...
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && samples.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={8}>
+                      暂无样本
+                    </td>
+                  </tr>
+                )}
+                {!loading && samples.map(item => (
+                  <tr key={item.id || `${item.conversationId}-${item.createdAt}`} className="border-b last:border-b-0 hover:bg-slate-50">
+                    <td className="px-3 py-2 align-top whitespace-nowrap text-slate-600">{formatTime(item.createdAt)}</td>
+                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{item.conversationId || '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-700">{item.userId ?? '-'}</td>
+                    <td className="px-3 py-2 align-top">
+                      <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium">
+                        {item.source || '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-xs">
+                      <div className="font-medium text-slate-800">{item.chosenRoute || '-'}</div>
+                      <div className="text-slate-500">conf: {item.chosenConfidence ?? '-'}</div>
+                      <div className="text-slate-500">tool: {item.chosenTool || '-'}</div>
+                    </td>
+                    <td className="px-3 py-2 align-top text-xs">
+                      <div className="font-medium text-slate-800">{item.localRoute || '-'}</div>
+                      <div className="text-slate-500">conf: {item.localConfidence ?? '-'}</div>
+                    </td>
+                    <td className="px-3 py-2 align-top text-xs">
+                      <div className="font-medium text-slate-800">{item.plannerRoute || '-'}</div>
+                      <div className="text-slate-500">conf: {item.plannerConfidence ?? '-'}</div>
+                    </td>
+                    <td className="px-3 py-2 align-top text-slate-700 break-all min-w-[280px]">{item.queryText || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SuperAdminOverview() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [admins, setAdmins] = useState([])
+  const [generatedAt, setGeneratedAt] = useState('')
+  const [expandedDatasets, setExpandedDatasets] = useState({})
+  const [expandedConversations, setExpandedConversations] = useState({})
+  const [expandedConversationRecords, setExpandedConversationRecords] = useState({})
+
+  const loadOverview = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetchSuperAdminOverview()
+      setAdmins(Array.isArray(data?.admins) ? data.admins : [])
+      setGeneratedAt(data?.generatedAt || '')
+    } catch (e) {
+      setError(e?.message || '加载失败')
+      setAdmins([])
+      setGeneratedAt('')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadOverview()
+  }, [])
+
+  const formatTime = (value) => {
+    if (!value) return '-'
+    const dt = new Date(value)
+    if (Number.isNaN(dt.getTime())) return String(value)
+    return dt.toLocaleString()
+  }
+
+  const toggleDataset = (adminKey, datasetId) => {
+    const key = `${adminKey}-${datasetId}`
+    setExpandedDatasets(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const toggleConversation = (adminKey, conversationId) => {
+    const key = `${adminKey}-${conversationId}`
+    setExpandedConversations(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const toggleConversationRecords = (adminKey, conversationId) => {
+    const key = `${adminKey}-${conversationId}`
+    setExpandedConversationRecords(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  return (
+    <div className="p-8 h-full overflow-y-auto">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">超级管理员总览</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              查看管理员的知识库、授权时间、会话与对话记录明细
+            </p>
+          </div>
+          <button
+            onClick={loadOverview}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw size={16} />
+            刷新
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl border shadow-sm px-4 py-3 text-sm text-slate-600">
+          最近生成时间：{formatTime(generatedAt)}
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="bg-white rounded-xl border shadow-sm px-4 py-10 text-slate-500 flex items-center justify-center gap-2">
+            <Loader2 size={16} className="animate-spin" />
+            加载中...
+          </div>
+        )}
+
+        {!loading && admins.length === 0 && !error && (
+          <div className="bg-white rounded-xl border shadow-sm px-4 py-10 text-center text-slate-400">
+            暂无管理员资产数据
+          </div>
+        )}
+
+        {!loading && admins.map((admin) => (
+          <div key={admin.adminUserId || admin.adminUsername} className="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b bg-slate-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-indigo-600" />
+                  <div className="font-semibold text-slate-800">{admin.adminUsername || '-'}</div>
+                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">admin</span>
+                </div>
+                <div className="text-xs text-slate-600">
+                  知识库 {admin.ownedDatasetCount || 0} · 授权记录 {admin.totalGrantedPermissionCount || 0} · 用户总览 {admin.userOverviewCount || 0} · 会话 {admin.conversationOverviewCount || 0} · 对话记录 {admin.conversationRecordCount || 0}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {(!Array.isArray(admin.ownedDatasets) || admin.ownedDatasets.length === 0) && (
+                <div className="text-sm text-slate-400 px-1">该管理员暂无登记的知识库。</div>
+              )}
+              {Array.isArray(admin.ownedDatasets) && admin.ownedDatasets.map((dataset) => (
+                <div key={`${admin.adminUserId}-${dataset.datasetId}`} className="rounded-lg border border-slate-200">
+                  <div className="px-4 py-3 bg-slate-50 border-b flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-slate-800 font-medium">
+                      <Database size={16} className="text-blue-600" />
+                      <span>{dataset.datasetName || dataset.datasetId}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-slate-600">
+                        文档数 {dataset.documentCount ?? 0}
+                      </div>
+                      <button
+                        onClick={() => toggleDataset(admin.adminUserId || admin.adminUsername, dataset.datasetId)}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        {expandedDatasets[`${admin.adminUserId || admin.adminUsername}-${dataset.datasetId}`] ? '收起' : '展开'}
+                      </button>
+                    </div>
+                  </div>
+                  {expandedDatasets[`${admin.adminUserId || admin.adminUsername}-${dataset.datasetId}`] && (
+                    <div className="px-4 py-3 space-y-2">
+                      <div className="text-xs text-slate-600">
+                        知识库创建时间：{formatTime(dataset.datasetCreatedAt)}
+                      </div>
+                      <div className="text-xs text-slate-500">已授权用户</div>
+                      {(!Array.isArray(dataset.grantedUsers) || dataset.grantedUsers.length === 0) ? (
+                        <div className="text-sm text-slate-400">暂无授权用户</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {dataset.grantedUsers.map((u) => (
+                            <div key={`${dataset.datasetId}-${u.userId}`} className="text-xs text-slate-700">
+                              {u.username} ({u.role}) · 授权时间 {formatTime(u.authorizedAt)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div className="rounded-lg border border-slate-200">
+                <div className="px-4 py-3 bg-slate-50 border-b text-sm font-medium text-slate-800">
+                  管理员会话总览
+                </div>
+                <div className="px-4 py-3 space-y-2">
+                  {(!Array.isArray(admin.conversations) || admin.conversations.length === 0) ? (
+                    <div className="text-sm text-slate-400">暂无会话记录</div>
+                  ) : (
+                    admin.conversations.map((conversation) => {
+                      const conversationKey = `${admin.adminUserId || admin.adminUsername}-${conversation.conversationId}`
+                      const expanded = !!expandedConversations[conversationKey]
+                      const recordExpanded = !!expandedConversationRecords[conversationKey]
+                      return (
+                        <div key={conversationKey} className="rounded border border-slate-200">
+                          <div className="px-3 py-2 flex items-center justify-between bg-white">
+                            <div className="text-xs text-slate-800">
+                              {conversation.title || conversation.conversationId} · 消息 {conversation.messageCount || 0}
+                            </div>
+                            <button
+                              onClick={() => toggleConversation(admin.adminUserId || admin.adminUsername, conversation.conversationId)}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              {expanded ? '收起' : '展开'}
+                            </button>
+                          </div>
+                          {expanded && (
+                            <div className="px-3 py-2 border-t bg-slate-50 space-y-2">
+                              <div className="text-xs text-slate-600">
+                                创建时间：{formatTime(conversation.createdAt)} · 更新时间：{formatTime(conversation.updatedAt)}
+                              </div>
+                              <button
+                                onClick={() => toggleConversationRecords(admin.adminUserId || admin.adminUsername, conversation.conversationId)}
+                                className="text-xs text-indigo-600 hover:text-indigo-800"
+                              >
+                                {recordExpanded ? '收起对话细节' : '展开对话细节'}
+                              </button>
+                              {recordExpanded && (
+                                <div className="space-y-1">
+                                  {(!Array.isArray(conversation.records) || conversation.records.length === 0) ? (
+                                    <div className="text-xs text-slate-400">暂无对话明细</div>
+                                  ) : (
+                                    conversation.records.map((record) => (
+                                      <div key={`${conversationKey}-${record.id}`} className="text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5">
+                                        [{record.role}] {record.content} · {formatTime(record.recordTime)}
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SourceViewer({ reference, onClose }) {
   const [activeTab, setActiveTab] = useState('summary') // 'summary' | 'pdf'
   const [numPages, setNumPages] = useState(null)
   const [scale, setScale] = useState(1.0)
   const [imageError, setImageError] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState('')
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfLoadError, setPdfLoadError] = useState('')
+  const pdfUrlRef = useRef('')
 
   useEffect(() => {
     setActiveTab('summary')
     setImageError(false)
     setScale(1.0)
     setNumPages(null)
+    setPdfLoadError('')
+    if (pdfUrlRef.current) {
+      URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = ''
+    }
+    setPdfUrl('')
   }, [reference])
+
+  useEffect(() => {
+    if (activeTab !== 'pdf' || !reference?.document_id) {
+      return
+    }
+    let disposed = false
+    let nextPdfUrl = ''
+    setPdfLoading(true)
+    setPdfLoadError('')
+    ;(async () => {
+      try {
+        const res = await apiFetch(`/document/get/${encodeURIComponent(reference.document_id)}`)
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        const blob = await res.blob()
+        if (!blob || blob.size === 0) {
+          throw new Error('EMPTY_BLOB')
+        }
+        nextPdfUrl = URL.createObjectURL(blob)
+        if (disposed) {
+          URL.revokeObjectURL(nextPdfUrl)
+          return
+        }
+        if (pdfUrlRef.current) {
+          URL.revokeObjectURL(pdfUrlRef.current)
+        }
+        pdfUrlRef.current = nextPdfUrl
+        setPdfUrl(nextPdfUrl)
+      } catch {
+        if (!disposed) {
+          setPdfLoadError('Failed to load PDF. Please check permissions.')
+          if (pdfUrlRef.current) {
+            URL.revokeObjectURL(pdfUrlRef.current)
+            pdfUrlRef.current = ''
+          }
+          setPdfUrl('')
+        }
+      } finally {
+        if (!disposed) {
+          setPdfLoading(false)
+        }
+      }
+    })()
+    return () => {
+      disposed = true
+      if (nextPdfUrl) {
+        URL.revokeObjectURL(nextPdfUrl)
+      }
+    }
+  }, [activeTab, reference?.document_id])
 
   useEffect(() => {
     if (activeTab === 'pdf' && numPages && reference?.positions?.[0]) {
@@ -1757,11 +2526,11 @@ function SourceViewer({ reference, onClose }) {
                {/* PDF View */}
                <div className="flex-1 overflow-auto bg-slate-500/10 flex justify-center p-8">
                  <Document
-                   file={`/api/document/get/${reference.document_id}`}
+                   file={pdfUrl || undefined}
                    onLoadSuccess={onDocumentLoadSuccess}
                    className="shadow-xl flex flex-col gap-4"
                    loading={<div className="flex items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /> Loading PDF...</div>}
-                   error={<div className="text-red-500 text-sm p-4 bg-red-50 rounded">Failed to load PDF. Please check permissions.</div>}
+                   error={<div className="text-red-500 text-sm p-4 bg-red-50 rounded">{pdfLoadError || 'Failed to load PDF. Please check permissions.'}</div>}
                  >
                    {numPages && Array.from(new Array(numPages), (el, index) => {
                         const pageNum = index + 1;
@@ -1799,6 +2568,11 @@ function SourceViewer({ reference, onClose }) {
                         );
                    })}
                  </Document>
+                 {pdfLoading && (
+                   <div className="absolute top-4 right-4 px-3 py-1.5 rounded bg-white text-xs text-slate-500 border border-slate-200 shadow-sm">
+                     PDF 加载中...
+                   </div>
+                 )}
                </div>
             </div>
           )}
@@ -1816,9 +2590,9 @@ function MarkdownWithCitations({ content, references, onViewReference }) {
   return (
     <Markdown
       components={{
-        pre: ({node, ...props}) => <div className="overflow-auto w-full my-2 bg-slate-800 text-slate-100 p-2 rounded" {...props} />,
-        code: ({node, ...props}) => <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs" {...props} />,
-        a: ({node, href, children, ...props}) => {
+        pre: ({_node, ...props}) => <div className="overflow-auto w-full my-2 bg-slate-800 text-slate-100 p-2 rounded" {...props} />,
+        code: ({_node, ...props}) => <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs" {...props} />,
+        a: ({_node, href, children, ...props}) => {
           if (href?.startsWith('#citation-')) {
             const index = parseInt(href.replace('#citation-', ''));
             const ref = references?.[index];
@@ -1882,135 +2656,1266 @@ function ThoughtBlock({ content, references, onViewReference, isStreaming }) {
   )
 }
 
-function ChatInterface({ role }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: '你好！我是 AI 助手，请问有什么可以帮你？' }
+function ChatInterface() {
+  const createDefaultAssistantMessage = useCallback(() => ({
+    role: 'assistant',
+    content: '你好！我是 AI 助手，请问有什么可以帮你？'
+  }), [])
+  const [messages, setMessages] = useState(() => [
+    createDefaultAssistantMessage()
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [conversationLoading, setConversationLoading] = useState(false)
+  const [conversationError, setConversationError] = useState('')
+  const [conversations, setConversations] = useState([])
+  const [activeConversationTitle, setActiveConversationTitle] = useState('')
+  const [renamingConversationId, setRenamingConversationId] = useState('')
+  const [renamingTitle, setRenamingTitle] = useState('')
+  const [conversationActionLoading, setConversationActionLoading] = useState(false)
   const [viewingRef, setViewingRef] = useState(null)
+  const [toolForms, setToolForms] = useState({})
+  const [toolPending, setToolPending] = useState({})
+  const [toolResults, setToolResults] = useState({})
+  const [planDrafts, setPlanDrafts] = useState({})
+  const [planUiStates, setPlanUiStates] = useState({})
   const messagesEndRef = useRef(null)
   const abortControllerRef = useRef(null)
   const currentRequestIdRef = useRef(0)
+  const conversationIdRef = useRef('')
+  const quickRouteExamples = [
+    '什么是指标校核',
+    '请使用指标校核',
+    '请帮我指标校核',
+    '什么是大模型',
+    '如何进行半面积计算'
+  ]
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSend = async () => {
-    if (!input.trim()) return
+  const normalizeConversationTitle = useCallback((item) => {
+    return item?.name || item?.title || item?.conversationTitle || item?.conversation_id || '未命名会话'
+  }, [])
+
+  const normalizeConversationId = useCallback((item) => {
+    return item?.conversationId || item?.conversation_id || item?.id || ''
+  }, [])
+
+  const normalizeMessageRole = useCallback((item) => {
+    const rawRole = String(item?.role || item?.message_role || item?.sender || '').toLowerCase()
+    if (rawRole === 'user') return 'user'
+    if (rawRole === 'assistant') return 'assistant'
+    return 'assistant'
+  }, [])
+
+  const normalizeMessageContent = useCallback((item) => {
+    return item?.content || item?.message || item?.text || ''
+  }, [])
+
+  const normalizeStoredMessagePayload = useCallback((item) => {
+    const rawPayload = item?.messagePayload ?? item?.message_payload ?? ''
+    if (!rawPayload) return {}
+    if (typeof rawPayload === 'object') return rawPayload
+    if (typeof rawPayload !== 'string') return {}
+    try {
+      return JSON.parse(rawPayload)
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const normalizeMessageFromHistory = useCallback((item) => {
+    const payload = normalizeStoredMessagePayload(item)
+    const fallbackContent = typeof payload?.content === 'string' ? payload.content : ''
+    const refs = Array.isArray(payload?.references)
+      ? payload.references
+      : (Array.isArray(item?.references) ? item.references : [])
+    const sourceTag = typeof payload?.sourceTag === 'string'
+      ? payload.sourceTag
+      : (typeof item?.sourceTag === 'string' ? item.sourceTag : '')
+    const logicFlow = typeof payload?.logicFlow === 'string'
+      ? payload.logicFlow
+      : (typeof item?.logicFlow === 'string' ? item.logicFlow : '')
+    const analysisPlan = payload?.analysisPlan && typeof payload.analysisPlan === 'object'
+      ? payload.analysisPlan
+      : (item?.analysisPlan && typeof item.analysisPlan === 'object' ? item.analysisPlan : null)
+    const analysisSteps = Array.isArray(payload?.analysisSteps)
+      ? payload.analysisSteps
+      : (Array.isArray(item?.analysisSteps) ? item.analysisSteps : [])
+    const analysisSummary = payload?.analysisSummary && typeof payload.analysisSummary === 'object'
+      ? payload.analysisSummary
+      : (item?.analysisSummary && typeof item.analysisSummary === 'object' ? item.analysisSummary : null)
+    const toolDraft = payload?.toolDraft && typeof payload.toolDraft === 'object'
+      ? payload.toolDraft
+      : (item?.toolDraft && typeof item.toolDraft === 'object' ? item.toolDraft : null)
+    const clarify = payload?.clarify && typeof payload.clarify === 'object'
+      ? payload.clarify
+      : (item?.clarify && typeof item.clarify === 'object' ? item.clarify : null)
+    const messageId = item?.id ?? item?.messageId ?? item?.message_id ?? item?.recordId ?? item?.record_id ?? null
+    return {
+      id: messageId,
+      role: normalizeMessageRole(item),
+      content: normalizeMessageContent(item) || fallbackContent,
+      references: refs,
+      sourceTag,
+      logicFlow,
+      analysisPlan,
+      analysisSteps,
+      analysisSummary,
+      toolDraft,
+      clarify
+    }
+  }, [normalizeMessageContent, normalizeMessageRole, normalizeStoredMessagePayload])
+
+  const buildMessagePayloadForSave = (msg) => {
+    if (!msg || typeof msg !== 'object') return ''
+    const payload = {
+      content: String(msg.content || ''),
+      references: Array.isArray(msg.references) ? msg.references : [],
+      sourceTag: String(msg.sourceTag || ''),
+      logicFlow: String(msg.logicFlow || ''),
+      analysisPlan: msg.analysisPlan && typeof msg.analysisPlan === 'object' ? msg.analysisPlan : null,
+      analysisSteps: Array.isArray(msg.analysisSteps) ? msg.analysisSteps : [],
+      analysisSummary: msg.analysisSummary && typeof msg.analysisSummary === 'object' ? msg.analysisSummary : null,
+      toolDraft: msg.toolDraft && typeof msg.toolDraft === 'object' ? msg.toolDraft : null,
+      clarify: msg.clarify && typeof msg.clarify === 'object' ? msg.clarify : null
+    }
+    const hasExtra = payload.references.length > 0
+      || payload.sourceTag
+      || payload.logicFlow
+      || payload.analysisPlan
+      || payload.analysisSteps.length > 0
+      || payload.analysisSummary
+      || payload.toolDraft
+      || payload.clarify
+    if (!hasExtra) return ''
+    return JSON.stringify(payload)
+  }
+
+  const loadConversationListAndMessages = useCallback(async (preferConversationId = '') => {
+    setConversationLoading(true)
+    setConversationError('')
+    try {
+      let list = await fetchConversations()
+      if (list.length === 0) {
+        const created = await createConversation('新对话')
+        if (created) {
+          list = await fetchConversations()
+        }
+      }
+      const normalizedList = list
+        .map(item => ({
+          id: normalizeConversationId(item),
+          title: normalizeConversationTitle(item),
+          createTime: item?.createTime || item?.create_time || ''
+        }))
+        .filter(item => item.id)
+      setConversations(normalizedList)
+      const preferred = normalizedList.find(item => item.id === preferConversationId)
+      const current = preferred || normalizedList[0]
+      if (!current) {
+        conversationIdRef.current = ''
+        setActiveConversationTitle('')
+        setMessages([createDefaultAssistantMessage()])
+        return
+      }
+      conversationIdRef.current = current.id
+      setActiveConversationTitle(current.title || '')
+      const history = await fetchConversationMessages(current.id)
+      const mappedMessages = history
+        .map(item => normalizeMessageFromHistory(item))
+        .filter(item => item.content)
+      const recoveredPlanDrafts = {}
+      mappedMessages.forEach((msg, index) => {
+        if (!msg.analysisPlan || typeof msg.analysisPlan !== 'object') return
+        const messageId = msg.id ?? `${current.id}-history-${index}`
+        msg.id = messageId
+        const steps = Array.isArray(msg.analysisPlan.steps) ? msg.analysisPlan.steps.map(normalizePlanStep) : []
+        const historyAnalysisSteps = Array.isArray(msg.analysisSteps) ? msg.analysisSteps : []
+        recoveredPlanDrafts[messageId] = {
+          planId: msg.analysisPlan.planId || msg.analysisPlan.plan_id || '',
+          version: msg.analysisPlan.version || 1,
+          query: msg.analysisPlan.query || '',
+          deepThinking: msg.analysisPlan.deepThinking || msg.analysisPlan.deep_thinking || '',
+          questionType: msg.analysisPlan.questionType || msg.analysisPlan.question_type || '',
+          summary: msg.analysisPlan.summary || '',
+          rerunMode: msg.analysisPlan.rerunMode || msg.analysisPlan.rerun_mode || 'AUTO',
+          restartFromStep: Number(msg.analysisPlan.restartFromStep || msg.analysisPlan.restart_from_step || 1),
+          adjustmentInstruction: msg.analysisPlan.adjustmentInstruction || '',
+          editedSteps: steps,
+          analysisSteps: historyAnalysisSteps,
+          analysisSummary: msg.analysisSummary || null
+        }
+      })
+      setPlanDrafts(recoveredPlanDrafts)
+      setPlanUiStates({})
+      setMessages(mappedMessages.length > 0 ? mappedMessages : [createDefaultAssistantMessage()])
+    } catch (err) {
+      setConversationError(err?.message || '会话加载失败')
+      setMessages([createDefaultAssistantMessage()])
+    } finally {
+      setConversationLoading(false)
+    }
+  }, [createDefaultAssistantMessage, normalizeConversationId, normalizeConversationTitle, normalizeMessageFromHistory])
+
+  useEffect(() => {
+    loadConversationListAndMessages()
+  }, [loadConversationListAndMessages])
+
+  const parseJsonSafe = (text, fallback = null) => {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return fallback
+    }
+  }
+
+  const normalizeRefs = (payload) => {
+    const rawRefs = payload?.reference || payload?.data?.reference
+    if (Array.isArray(rawRefs)) return rawRefs
+    if (rawRefs && Array.isArray(rawRefs.chunks)) return rawRefs.chunks
+    return []
+  }
+
+  const buildReferenceOnlyNotice = (refs) => {
+    if (!Array.isArray(refs) || refs.length === 0) return ''
+    const docNames = Array.from(new Set(
+      refs
+        .map((ref, idx) => ref?.document_name || ref?.doc_name || `文档${idx + 1}`)
+        .filter(Boolean)
+    )).slice(0, 3)
+    if (docNames.length === 0) {
+      return '已检索到相关资料，请查看下方引用原文。'
+    }
+    return `已检索到相关资料（${docNames.join('、')}），请查看下方引用原文。`
+  }
+
+  const normalizeClarifySuggestions = (payload) => {
+    if (!payload || !Array.isArray(payload.suggestions)) return []
+    return payload.suggestions
+      .map(item => typeof item === 'string' ? item.trim() : '')
+      .filter(Boolean)
+      .slice(0, 3)
+  }
+
+  const normalizeLogicFlow = (payload) => {
+    const flow = payload?.logicFlow || payload?.data?.logicFlow || ''
+    return typeof flow === 'string' ? flow.trim() : ''
+  }
+
+  const consumeSse = async (response, onEvent) => {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let currentEvent = 'message'
+    let dataLines = []
+    const flushEvent = async () => {
+      if (dataLines.length === 0) {
+        currentEvent = 'message'
+        return
+      }
+      const data = dataLines.join('\n')
+      dataLines = []
+      await onEvent(currentEvent || 'message', data)
+      currentEvent = 'message'
+    }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const rawLine of lines) {
+        const line = rawLine.trimEnd()
+        if (!line) {
+          await flushEvent()
+          continue
+        }
+        if (line.startsWith('event:')) {
+          await flushEvent()
+          currentEvent = line.slice(6).trim()
+          continue
+        }
+        if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).replace(/^\s/, ''))
+        }
+      }
+    }
+    if (buffer.trim()) {
+      if (buffer.trimStart().startsWith('data:')) {
+        dataLines.push(buffer.trimStart().slice(5).replace(/^\s/, ''))
+      }
+    }
+    await flushEvent()
+  }
+
+  const updateStreamingMessage = (messageId, updater) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== messageId) return msg
+      return { ...msg, ...updater(msg) }
+    }))
+  }
+
+  const normalizePlanStep = (step, index) => {
+    const stepNo = Number(step?.stepNo ?? step?.step_no ?? index + 1)
+    const route = String(step?.route || '').trim().toUpperCase()
+    const label = String(step?.label || '').trim() || `步骤${stepNo}`
+    return {
+      stepNo,
+      route,
+      label,
+      goal: String(step?.goal || '').trim(),
+      query: String(step?.query || '').trim(),
+      toolName: String(step?.toolName || step?.tool_name || '').trim(),
+      continueWhen: String(step?.continueWhen || step?.continue_when || '').trim(),
+      stopWhen: String(step?.stopWhen || step?.stop_when || '').trim()
+    }
+  }
+
+  const reindexPlanSteps = (steps) => {
+    return (steps || []).map((step, index) => ({
+      ...step,
+      stepNo: index + 1
+    }))
+  }
+
+  const initializePlanDraft = (messageId, payload) => {
+    if (!payload) return
+    const steps = Array.isArray(payload.steps) ? payload.steps.map(normalizePlanStep) : []
+    setPlanDrafts(prev => ({
+      ...prev,
+      [messageId]: {
+        planId: payload.planId || payload.plan_id || '',
+        version: payload.version || 1,
+        query: payload.query || '',
+        deepThinking: payload.deepThinking || payload.deep_thinking || '',
+        questionType: payload.questionType || payload.question_type || '',
+        summary: payload.summary || '',
+        rerunMode: payload.rerunMode || payload.rerun_mode || 'AUTO',
+        restartFromStep: Number(payload.restartFromStep || payload.restart_from_step || 1),
+        adjustmentInstruction: payload.adjustmentInstruction || '',
+        editedSteps: steps,
+        analysisSteps: [],
+        analysisSummary: null
+      }
+    }))
+    updateStreamingMessage(messageId, old => ({
+      analysisPlan: payload,
+      content: old.content || ''
+    }))
+  }
+
+  const updatePlanDraft = (messageId, updater) => {
+    setPlanDrafts(prev => {
+      const current = prev[messageId]
+      if (!current) return prev
+      const next = updater(current)
+      return { ...prev, [messageId]: next }
+    })
+  }
+
+  const updatePlanUiState = (messageId, updater) => {
+    setPlanUiStates(prev => {
+      const current = prev[messageId] || {
+        manualExpanded: false,
+        manualCollapsed: false,
+        editMode: false
+      }
+      const next = updater(current)
+      return { ...prev, [messageId]: next }
+    })
+  }
+
+  const togglePlanExpanded = (messageId, msg) => {
+    updatePlanUiState(messageId, current => {
+      const currentlyExpanded = current.manualExpanded
+        ? true
+        : current.manualCollapsed
+          ? false
+          : !!msg?.isStreaming
+      if (currentlyExpanded) {
+        return { ...current, manualExpanded: false, manualCollapsed: true }
+      }
+      return { ...current, manualExpanded: true, manualCollapsed: false }
+    })
+  }
+
+  const togglePlanEditMode = (messageId, enabled) => {
+    updatePlanUiState(messageId, current => ({
+      ...current,
+      editMode: enabled,
+      manualExpanded: true,
+      manualCollapsed: false
+    }))
+  }
+
+  const handlePlanStepFieldChange = (messageId, index, key, value) => {
+    updatePlanDraft(messageId, current => {
+      const nextSteps = (current.editedSteps || []).map((step, i) => {
+        if (i !== index) return step
+        return { ...step, [key]: value }
+      })
+      return { ...current, editedSteps: nextSteps }
+    })
+  }
+
+  const handlePlanConfigChange = (messageId, key, value) => {
+    updatePlanDraft(messageId, current => ({ ...current, [key]: value }))
+  }
+
+  const handlePlanStepMove = (messageId, index, direction) => {
+    updatePlanDraft(messageId, current => {
+      const steps = [...(current.editedSteps || [])]
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= steps.length) return current
+      const temp = steps[index]
+      steps[index] = steps[targetIndex]
+      steps[targetIndex] = temp
+      return { ...current, editedSteps: reindexPlanSteps(steps) }
+    })
+  }
+
+  const handlePlanStepAdd = (messageId) => {
+    updatePlanDraft(messageId, current => {
+      const nextSteps = [...(current.editedSteps || [])]
+      nextSteps.push(normalizePlanStep({
+        route: 'AUTO',
+        label: '新步骤',
+        goal: '',
+        query: current.query || '',
+        toolName: '',
+        continueWhen: '',
+        stopWhen: ''
+      }, nextSteps.length))
+      return { ...current, editedSteps: reindexPlanSteps(nextSteps) }
+    })
+  }
+
+  const handlePlanStepRemove = (messageId, index) => {
+    updatePlanDraft(messageId, current => {
+      const steps = [...(current.editedSteps || [])]
+      if (steps.length <= 1) return current
+      steps.splice(index, 1)
+      return { ...current, editedSteps: reindexPlanSteps(steps) }
+    })
+  }
+
+  const buildPlanStreamState = (draft, msg) => {
+    const executed = Array.isArray(draft?.analysisSteps) ? draft.analysisSteps : []
+    const planned = Array.isArray(draft?.editedSteps) ? draft.editedSteps.length : 0
+    const finishedRaw = executed.filter(step => {
+      const status = String(step?.status || '').toLowerCase()
+      return status === 'completed' || status === 'done'
+    }).length
+    const finished = planned > 0 ? Math.min(finishedRaw, planned) : finishedRaw
+    const latest = executed.length > 0 ? executed[executed.length - 1] : null
+    const waitingApproval = executed.some(step => String(step?.status || '').toLowerCase() === 'waiting_approval')
+    if (draft?.analysisSummary || msg?.analysisSummary) {
+      const total = planned || Math.max(finished, 1)
+      if (waitingApproval || (planned > 0 && finished < planned)) {
+        const percent = total > 0 ? Math.round((finished / total) * 100) : 20
+        return {
+          text: `已执行：${finished}/${total} 步（${waitingApproval ? '等待审批' : '未全部完成'}）`,
+          progress: Math.max(12, Math.min(99, percent))
+        }
+      }
+      return {
+        text: `已完成：${finished}/${total} 步`,
+        progress: 100
+      }
+    }
+    if (msg?.isStreaming) {
+      if (!latest) {
+        return {
+          text: `进行中：0/${planned || 1} 步（正在生成链路）`,
+          progress: 10
+        }
+      }
+      const latestNoRaw = Number(latest.step_no || executed.length)
+      const latestNo = planned > 0 ? Math.min(Math.max(1, latestNoRaw), planned) : Math.max(1, latestNoRaw)
+      const latestLabel = latest.label || latest.type || '执行步骤'
+      const latestStatus = latest.status || 'streaming'
+      const percentBase = planned > 0 ? Math.min(100, Math.round((latestNo / planned) * 100)) : 30
+      return {
+        text: `进行中：第 ${latestNo} 步 ${latestLabel}（${latestStatus}）`,
+        progress: Math.max(12, percentBase)
+      }
+    }
+    return {
+      text: `待执行：0/${planned || 1} 步`,
+      progress: 0
+    }
+  }
+
+  const buildStepSectionHeader = (stepPayload) => {
+    const stepNoRaw = Number(stepPayload?.step_no || 0)
+    const stepNo = Number.isFinite(stepNoRaw) && stepNoRaw > 0 ? stepNoRaw : null
+    const label = String(stepPayload?.label || stepPayload?.type || '执行步骤').trim()
+    const route = String(stepPayload?.route || stepPayload?.type || '').trim()
+    const query = String(stepPayload?.query || '').trim()
+    const title = stepNo ? `### 第 ${stepNo} 步：${label}` : `### ${label}`
+    const meta = [route ? `路由：${route}` : '', query ? `任务：${query}` : ''].filter(Boolean).join('｜')
+    return meta ? `${title}\n${meta}\n\n` : `${title}\n\n`
+  }
+
+  const runWithPlanDraft = async (messageId, replanOnly) => {
+    const draft = planDrafts[messageId]
+    if (!draft) return
+    const nextMsgId = Date.now() + Math.floor(Math.random() * 1000)
+    setMessages(prev => [...prev, { role: 'assistant', content: '', id: nextMsgId, isStreaming: true }])
+    setLoading(true)
+    let finalAssistantContent = ''
+    let pendingStepPayload = null
+    const insertedStepNoSet = new Set()
+    let insertedFallbackHeader = false
+    const assistantPayloadState = {
+      references: [],
+      sourceTag: '',
+      logicFlow: '',
+      analysisPlan: null,
+      analysisSteps: [],
+      analysisSummary: null,
+      toolDraft: null,
+      clarify: null
+    }
+    try {
+      const response = await startAgentStream(conversationIdRef.current, draft.query || '', {
+        adjustmentInstruction: draft.adjustmentInstruction || '',
+        editedSteps: draft.editedSteps || [],
+        rerunMode: draft.rerunMode || 'AUTO',
+        restartFromStep: draft.restartFromStep || 1,
+        replanOnly
+      })
+      let aiContent = ''
+      let hasRenderableOutput = false
+      await consumeSse(response, async (eventName, dataStr) => {
+        if (dataStr === '[DONE]') return
+        if (eventName === 'analysis_plan') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          assistantPayloadState.analysisPlan = payload
+          initializePlanDraft(nextMsgId, payload)
+          return
+        }
+        if (eventName === 'analysis_step') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          pendingStepPayload = payload
+          assistantPayloadState.analysisSteps = [...assistantPayloadState.analysisSteps, payload]
+          updatePlanDraft(nextMsgId, current => ({
+            ...current,
+            analysisSteps: [...(current.analysisSteps || []), payload]
+          }))
+          updateStreamingMessage(nextMsgId, old => ({
+            analysisSteps: [...(old.analysisSteps || []), payload]
+          }))
+          return
+        }
+        if (eventName === 'analysis_summary') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          assistantPayloadState.analysisSummary = payload
+          updatePlanDraft(nextMsgId, current => ({ ...current, analysisSummary: payload }))
+          updateStreamingMessage(nextMsgId, () => ({ analysisSummary: payload }))
+          return
+        }
+        if (eventName === 'tool_draft') {
+          hasRenderableOutput = true
+          const draftPayload = parseJsonSafe(dataStr)
+          if (!draftPayload) return
+          assistantPayloadState.toolDraft = draftPayload
+          const draftArgs = parseJsonSafe(draftPayload.draftArgs, {}) || {}
+          setToolForms(prev => ({
+            ...prev,
+            [draftPayload.toolCallId]: {
+              args: draftArgs,
+              files: []
+            }
+          }))
+          const tip = '已识别到可执行技能，请填写参数并上传文件后执行。'
+          updateStreamingMessage(nextMsgId, old => {
+            const base = String(old.content || aiContent || '').trim()
+            const content = base.includes(tip) ? base : `${base ? `${base}\n\n` : ''}${tip}`
+            finalAssistantContent = content
+            return {
+              content,
+              toolDraft: draftPayload
+            }
+          })
+          return
+        }
+        if (eventName === 'clarify') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          const question = (payload.question || '我需要你补充一下意图，才能继续。').trim()
+          assistantPayloadState.clarify = {
+            ...payload,
+            suggestions: normalizeClarifySuggestions(payload)
+          }
+          finalAssistantContent = question
+          updateStreamingMessage(nextMsgId, () => ({
+            content: question,
+            clarify: assistantPayloadState.clarify
+          }))
+          return
+        }
+        if (eventName === 'token') {
+          hasRenderableOutput = true
+          if (pendingStepPayload) {
+            const stepNo = Number(pendingStepPayload?.step_no || 0)
+            if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedStepNoSet.add(stepNo)
+            } else if (stepNo <= 0 && !insertedFallbackHeader) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedFallbackHeader = true
+            }
+            pendingStepPayload = null
+          }
+          aiContent += dataStr
+          finalAssistantContent = aiContent
+          updateStreamingMessage(nextMsgId, () => ({ content: aiContent }))
+          return
+        }
+        if (eventName === 'error') {
+          hasRenderableOutput = true
+          updateStreamingMessage(nextMsgId, () => ({ content: `**Error**: ${dataStr}` }))
+          return
+        }
+        if (eventName === 'message') {
+          const payload = parseJsonSafe(dataStr)
+          if (!payload) {
+            const plainText = (dataStr || '').trim()
+            if (!plainText) return
+            hasRenderableOutput = true
+            if (pendingStepPayload) {
+              const stepNo = Number(pendingStepPayload?.step_no || 0)
+              if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+                aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+                insertedStepNoSet.add(stepNo)
+              } else if (stepNo <= 0 && !insertedFallbackHeader) {
+                aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+                insertedFallbackHeader = true
+              }
+              pendingStepPayload = null
+            }
+            aiContent += plainText
+            finalAssistantContent = aiContent
+            updateStreamingMessage(nextMsgId, () => ({ content: aiContent }))
+            return
+          }
+          const delta = payload.answer || payload.data?.answer || ''
+          const refs = normalizeRefs(payload)
+          const logicFlow = normalizeLogicFlow(payload)
+          const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          if (refs.length > 0) {
+            assistantPayloadState.references = refs
+          }
+          if (logicFlow) {
+            assistantPayloadState.logicFlow = logicFlow
+          }
+          if (sourceTag) {
+            assistantPayloadState.sourceTag = sourceTag
+          }
+          if (!delta && refs.length > 0 && !aiContent.trim()) {
+            aiContent += buildReferenceOnlyNotice(refs)
+          }
+          if (pendingStepPayload && delta) {
+            const stepNo = Number(pendingStepPayload?.step_no || 0)
+            if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedStepNoSet.add(stepNo)
+            } else if (stepNo <= 0 && !insertedFallbackHeader) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedFallbackHeader = true
+            }
+            pendingStepPayload = null
+          }
+          aiContent += delta
+          finalAssistantContent = aiContent
+          updateStreamingMessage(nextMsgId, old => ({
+            content: aiContent,
+            references: refs.length > 0 ? refs : old.references,
+            sourceTag: sourceTag || old.sourceTag,
+            logicFlow: logicFlow || old.logicFlow
+          }))
+          hasRenderableOutput = true
+        }
+      })
+      if (!hasRenderableOutput) {
+        finalAssistantContent = '请求已完成，暂未返回可展示内容。'
+        updateStreamingMessage(nextMsgId, () => ({ content: finalAssistantContent }))
+      }
+    } catch (err) {
+      finalAssistantContent = `**Error**: ${err.message}`
+      updateStreamingMessage(nextMsgId, () => ({ content: `**Error**: ${err.message}` }))
+    } finally {
+      setLoading(false)
+      updateStreamingMessage(nextMsgId, () => ({ isStreaming: false }))
+      if (conversationIdRef.current && finalAssistantContent.trim()) {
+        try {
+          const payloadText = buildMessagePayloadForSave({
+            content: finalAssistantContent,
+            ...assistantPayloadState
+          })
+          await saveConversationMessage(conversationIdRef.current, 'assistant', finalAssistantContent, activeConversationTitle, payloadText)
+        } catch (persistErr) {
+          console.error('保存助手消息失败:', persistErr)
+        }
+      }
+    }
+  }
+
+  const handleClarifySuggestionClick = (text) => {
+    if (!text) return
+    setInput(text)
+  }
+
+  const handleSend = async (presetInput) => {
+    const mergedInput = typeof presetInput === 'string' ? presetInput : input
+    const finalInput = String(mergedInput || '').trim()
+    if (!finalInput) return
 
     if (loading && abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
 
     const requestId = ++currentRequestIdRef.current
-    const userMsg = { role: 'user', content: input }
+    if (!conversationIdRef.current) {
+      await loadConversationListAndMessages()
+    }
+    if (!conversationIdRef.current) {
+      setConversationError('当前无可用会话，请先新建会话')
+      return
+    }
+    const conversationTitle = activeConversationTitle || finalInput.slice(0, 20)
+    const userMsg = { role: 'user', content: finalInput }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
+    try {
+      await saveConversationMessage(conversationIdRef.current, 'user', finalInput, conversationTitle)
+    } catch (persistErr) {
+      console.error('保存用户消息失败:', persistErr)
+    }
 
     const aiMsgId = Date.now()
     setMessages(prev => [...prev, { role: 'assistant', content: '', id: aiMsgId, isStreaming: true }])
-    
     abortControllerRef.current = new AbortController()
+    let finalAssistantContent = ''
+    let pendingStepPayload = null
+    const insertedStepNoSet = new Set()
+    let insertedFallbackHeader = false
+    const assistantPayloadState = {
+      references: [],
+      sourceTag: '',
+      logicFlow: '',
+      analysisPlan: null,
+      analysisSteps: [],
+      analysisSummary: null,
+      toolDraft: null,
+      clarify: null
+    }
 
     try {
-      const response = await fetch(`${API_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Name': role === 'admin' ? 'admin' : 'zhangsan' 
-        },
-        body: JSON.stringify({
-          question: userMsg.content,
-          // user role does not select datasets; backend uses assigned permissions
-          // admin can potentially select, but let's default to all/auto for now
-          stream: true
-        }),
-        signal: abortControllerRef.current.signal
-      })
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+      const response = await startAgentStream(conversationIdRef.current, userMsg.content)
       let aiContent = ''
-      let buffer = ''
+      let hasRenderableOutput = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          console.log('Stream done')
-          break
+      await consumeSse(response, async (eventName, dataStr) => {
+        if (dataStr === '[DONE]') return
+        if (eventName === 'analysis_plan') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          assistantPayloadState.analysisPlan = payload
+          initializePlanDraft(aiMsgId, payload)
+          return
         }
-        
-        const chunk = decoder.decode(value, { stream: true })
-        console.log('Received chunk:', chunk)
-        buffer += chunk
-        const lines = buffer.split('\n')
-        
-        // Process all complete lines
-        buffer = lines.pop() || '' 
-        
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const dataStr = line.slice(5).trim()
-            if (dataStr === '[DONE]') continue
-            
-            try {
-              const data = JSON.parse(dataStr)
-              console.log('Parsed data:', data)
-              // Handle RAGFlow SSE format
-              const delta = data.answer || data.data?.answer || ''
-              aiContent += delta
-              
-              const newRefs = data.reference
-              
-              setMessages(prev => prev.map(msg => 
-                msg.id === aiMsgId ? { 
-                  ...msg, 
-                  content: aiContent,
-                  references: (newRefs && Array.isArray(newRefs) && newRefs.length > 0) ? newRefs : msg.references
-                } : msg
-              ))
-            } catch (e) {
-              console.warn('SSE Parse Error:', e, 'Line:', line)
+        if (eventName === 'analysis_step') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          pendingStepPayload = payload
+          assistantPayloadState.analysisSteps = [...assistantPayloadState.analysisSteps, payload]
+          updatePlanDraft(aiMsgId, current => ({
+            ...current,
+            analysisSteps: [...(current.analysisSteps || []), payload]
+          }))
+          updateStreamingMessage(aiMsgId, old => ({
+            analysisSteps: [...(old.analysisSteps || []), payload]
+          }))
+          return
+        }
+        if (eventName === 'analysis_summary') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          assistantPayloadState.analysisSummary = payload
+          updatePlanDraft(aiMsgId, current => ({ ...current, analysisSummary: payload }))
+          updateStreamingMessage(aiMsgId, () => ({ analysisSummary: payload }))
+          return
+        }
+        if (eventName === 'token') {
+          hasRenderableOutput = true
+          if (pendingStepPayload) {
+            const stepNo = Number(pendingStepPayload?.step_no || 0)
+            if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedStepNoSet.add(stepNo)
+            } else if (stepNo <= 0 && !insertedFallbackHeader) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedFallbackHeader = true
             }
+            pendingStepPayload = null
           }
+          aiContent += dataStr
+          finalAssistantContent = aiContent
+          updateStreamingMessage(aiMsgId, () => ({ content: aiContent }))
+          return
         }
+        if (eventName === 'tool_draft') {
+          hasRenderableOutput = true
+          const draft = parseJsonSafe(dataStr)
+          if (!draft) return
+          assistantPayloadState.toolDraft = draft
+          const draftArgs = parseJsonSafe(draft.draftArgs, {}) || {}
+          setToolForms(prev => ({
+            ...prev,
+            [draft.toolCallId]: {
+              args: draftArgs,
+              files: []
+            }
+          }))
+          const tip = '已识别到可执行技能，请填写参数并上传文件后执行。'
+          updateStreamingMessage(aiMsgId, old => {
+            const base = String(old.content || aiContent || '').trim()
+            const content = base.includes(tip) ? base : `${base ? `${base}\n\n` : ''}${tip}`
+            finalAssistantContent = content
+            return {
+              content,
+              toolDraft: draft
+            }
+          })
+          return
+        }
+        if (eventName === 'clarify') {
+          hasRenderableOutput = true
+          const payload = parseJsonSafe(dataStr, {}) || {}
+          const question = (payload.question || '我需要你补充一下意图，才能继续。').trim()
+          assistantPayloadState.clarify = {
+            ...payload,
+            suggestions: normalizeClarifySuggestions(payload)
+          }
+          updateStreamingMessage(aiMsgId, () => ({
+            content: question,
+            clarify: assistantPayloadState.clarify
+          }))
+          return
+        }
+        if (eventName === 'error') {
+          hasRenderableOutput = true
+          updateStreamingMessage(aiMsgId, () => ({ content: `**Error**: ${dataStr}` }))
+          return
+        }
+        if (eventName === 'message') {
+          const payload = parseJsonSafe(dataStr)
+          if (!payload) {
+            const plainText = (dataStr || '').trim()
+            if (!plainText) return
+            hasRenderableOutput = true
+            if (pendingStepPayload) {
+              const stepNo = Number(pendingStepPayload?.step_no || 0)
+              if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+                aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+                insertedStepNoSet.add(stepNo)
+              } else if (stepNo <= 0 && !insertedFallbackHeader) {
+                aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+                insertedFallbackHeader = true
+              }
+              pendingStepPayload = null
+            }
+            aiContent += plainText
+            finalAssistantContent = aiContent
+            updateStreamingMessage(aiMsgId, () => ({ content: aiContent }))
+            return
+          }
+          const delta = payload.answer || payload.data?.answer || ''
+          const refs = normalizeRefs(payload)
+          const logicFlow = normalizeLogicFlow(payload)
+          const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          if (refs.length > 0) {
+            assistantPayloadState.references = refs
+          }
+          if (logicFlow) {
+            assistantPayloadState.logicFlow = logicFlow
+          }
+          if (sourceTag) {
+            assistantPayloadState.sourceTag = sourceTag
+          }
+          if (delta || refs.length > 0 || logicFlow) {
+            hasRenderableOutput = true
+          }
+          if (!delta && refs.length > 0 && !aiContent.trim()) {
+            aiContent += buildReferenceOnlyNotice(refs)
+          }
+          if (pendingStepPayload && delta) {
+            const stepNo = Number(pendingStepPayload?.step_no || 0)
+            if (stepNo > 0 && !insertedStepNoSet.has(stepNo)) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedStepNoSet.add(stepNo)
+            } else if (stepNo <= 0 && !insertedFallbackHeader) {
+              aiContent += `${aiContent.trim() ? '\n\n' : ''}${buildStepSectionHeader(pendingStepPayload)}`
+              insertedFallbackHeader = true
+            }
+            pendingStepPayload = null
+          }
+          aiContent += delta
+          finalAssistantContent = aiContent
+          updateStreamingMessage(aiMsgId, old => ({
+            content: aiContent,
+            references: refs.length > 0 ? refs : old.references,
+            sourceTag: sourceTag || old.sourceTag,
+            logicFlow: logicFlow || old.logicFlow
+          }))
+        }
+      })
+      if (!hasRenderableOutput) {
+        finalAssistantContent = '请求已完成，暂未返回可展示内容。'
+        updateStreamingMessage(aiMsgId, () => ({ content: '请求已完成，暂未返回可展示内容。' }))
       }
     } catch (err) {
       if (err.name === 'AbortError') {
         return
       }
-      console.error(err)
-      setMessages(prev => prev.map(msg => 
-        msg.id === aiMsgId ? { ...msg, content: `**Error**: ${err.message}` } : msg
-      ))
+      finalAssistantContent = `**Error**: ${err.message}`
+      updateStreamingMessage(aiMsgId, () => ({ content: `**Error**: ${err.message}` }))
     } finally {
       if (currentRequestIdRef.current === requestId) {
         setLoading(false)
       }
-      setMessages(prev => prev.map(msg => 
-        msg.id === aiMsgId ? { ...msg, isStreaming: false } : msg
-      ))
+      updateStreamingMessage(aiMsgId, () => ({ isStreaming: false }))
+      if (conversationIdRef.current && finalAssistantContent.trim()) {
+        try {
+          const payloadText = buildMessagePayloadForSave({
+            content: finalAssistantContent,
+            ...assistantPayloadState
+          })
+          await saveConversationMessage(conversationIdRef.current, 'assistant', finalAssistantContent, conversationTitle, payloadText)
+        } catch (persistErr) {
+          console.error('保存助手消息失败:', persistErr)
+        }
+      }
+    }
+  }
+
+  const handleCreateConversation = async () => {
+    if (conversationLoading || conversationActionLoading) return
+    setConversationLoading(true)
+    setConversationError('')
+    try {
+      const created = await createConversation('新对话')
+      const nextConversationId = normalizeConversationId(created)
+      await loadConversationListAndMessages(nextConversationId)
+    } catch (err) {
+      setConversationError(err?.message || '新建会话失败')
+      setConversationLoading(false)
+    }
+  }
+
+  const handleSwitchConversation = async (targetConversationId) => {
+    if (!targetConversationId || targetConversationId === conversationIdRef.current) return
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    await loadConversationListAndMessages(targetConversationId)
+  }
+
+  const handleStopGeneration = () => {
+    if (!loading || !abortControllerRef.current) return
+    abortControllerRef.current.abort()
+    setLoading(false)
+  }
+
+  const handleStartRenameConversation = (item) => {
+    if (!item?.id) return
+    setRenamingConversationId(item.id)
+    setRenamingTitle(item.title || '')
+  }
+
+  const handleCancelRenameConversation = () => {
+    setRenamingConversationId('')
+    setRenamingTitle('')
+  }
+
+  const handleSubmitRenameConversation = async (conversationId) => {
+    const nextTitle = String(renamingTitle || '').trim()
+    if (!conversationId || !nextTitle) {
+      setConversationError('会话名称不能为空')
+      return
+    }
+    setConversationActionLoading(true)
+    setConversationError('')
+    try {
+      await renameConversation(conversationId, nextTitle)
+      setRenamingConversationId('')
+      setRenamingTitle('')
+      await loadConversationListAndMessages(conversationId)
+    } catch (err) {
+      setConversationError(err?.message || '重命名会话失败')
+    } finally {
+      setConversationActionLoading(false)
+    }
+  }
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!conversationId || conversationActionLoading) return
+    if (!window.confirm('确定删除该会话及全部消息吗？')) return
+    setConversationActionLoading(true)
+    setConversationError('')
+    try {
+      await deleteConversation(conversationId)
+      const rest = conversations.filter(item => item.id !== conversationId)
+      const nextConversationId = rest[0]?.id || ''
+      await loadConversationListAndMessages(nextConversationId)
+    } catch (err) {
+      setConversationError(err?.message || '删除会话失败')
+    } finally {
+      setConversationActionLoading(false)
+    }
+  }
+
+  const handleToolArgChange = (toolCallId, key, value) => {
+    setToolForms(prev => ({
+      ...prev,
+      [toolCallId]: {
+        ...(prev[toolCallId] || { args: {}, files: [] }),
+        args: {
+          ...((prev[toolCallId] && prev[toolCallId].args) || {}),
+          [key]: value
+        }
+      }
+    }))
+  }
+
+  const handleToolFileChange = (toolCallId, files) => {
+    setToolForms(prev => ({
+      ...prev,
+      [toolCallId]: {
+        ...(prev[toolCallId] || { args: {}, files: [] }),
+        files: Array.from(files || [])
+      }
+    }))
+  }
+
+  const handleApproveTool = async (toolDraft) => {
+    const toolCallId = toolDraft.toolCallId
+    const form = toolForms[toolCallId] || { args: {}, files: [] }
+    const files = form.files || []
+    const args = form.args || {}
+    if (toolDraft.toolSpec?.upload_required && files.length === 0) {
+      alert('该技能需要先上传文件')
+      return
+    }
+    setToolPending(prev => ({ ...prev, [toolCallId]: true }))
+    const aiMsgId = Date.now() + Math.floor(Math.random() * 1000)
+    setMessages(prev => [...prev, { role: 'assistant', content: '', id: aiMsgId, isStreaming: true }])
+    let finalAssistantContent = ''
+    const assistantPayloadState = {
+      references: [],
+      sourceTag: '',
+      logicFlow: ''
+    }
+    try {
+      for (const file of files) {
+        await uploadToolInputFile(toolCallId, file)
+      }
+      const response = await approveToolCall(
+        conversationIdRef.current,
+        toolCallId,
+        JSON.stringify(args)
+      )
+      let aiContent = ''
+      let latestToolResult = null
+      await consumeSse(response, async (eventName, dataStr) => {
+        if (dataStr === '[DONE]') return
+        if (eventName === 'tool_result') {
+          const result = parseJsonSafe(dataStr)
+          if (result) {
+            latestToolResult = result
+            setToolResults(prev => ({ ...prev, [toolCallId]: result }))
+          }
+          return
+        }
+        if (eventName === 'token') {
+          aiContent += dataStr
+          finalAssistantContent = aiContent
+          updateStreamingMessage(aiMsgId, () => ({ content: aiContent }))
+          return
+        }
+        if (eventName === 'error') {
+          finalAssistantContent = `**Error**: ${dataStr}`
+          updateStreamingMessage(aiMsgId, () => ({ content: `**Error**: ${dataStr}` }))
+          return
+        }
+        if (eventName === 'message') {
+          const payload = parseJsonSafe(dataStr)
+          if (!payload) {
+            const plainText = (dataStr || '').trim()
+            if (!plainText) return
+            aiContent += plainText
+            finalAssistantContent = aiContent
+            updateStreamingMessage(aiMsgId, () => ({ content: aiContent }))
+            return
+          }
+          const delta = payload.answer || payload.data?.answer || ''
+          const refs = normalizeRefs(payload)
+          const logicFlow = normalizeLogicFlow(payload)
+          const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          if (refs.length > 0) {
+            assistantPayloadState.references = refs
+          }
+          if (logicFlow) {
+            assistantPayloadState.logicFlow = logicFlow
+          }
+          if (sourceTag) {
+            assistantPayloadState.sourceTag = sourceTag
+          }
+          if (!delta && refs.length > 0 && !aiContent.trim()) {
+            aiContent += buildReferenceOnlyNotice(refs)
+          }
+          aiContent += delta
+          finalAssistantContent = aiContent
+          updateStreamingMessage(aiMsgId, old => ({
+            content: aiContent,
+            references: refs.length > 0 ? refs : old.references,
+            sourceTag: sourceTag || old.sourceTag,
+            logicFlow: logicFlow || old.logicFlow
+          }))
+        }
+      })
+      if (!aiContent) {
+        finalAssistantContent = latestToolResult?.summary || '工具执行完成。'
+        updateStreamingMessage(aiMsgId, () => ({ content: finalAssistantContent }))
+      }
+    } catch (err) {
+      finalAssistantContent = `**Error**: ${err.message}`
+      updateStreamingMessage(aiMsgId, () => ({ content: `**Error**: ${err.message}` }))
+    } finally {
+      setToolPending(prev => ({ ...prev, [toolCallId]: false }))
+      updateStreamingMessage(aiMsgId, () => ({ isStreaming: false }))
+      if (conversationIdRef.current && finalAssistantContent.trim()) {
+        try {
+          const payloadText = buildMessagePayloadForSave({
+            content: finalAssistantContent,
+            ...assistantPayloadState
+          })
+          await saveConversationMessage(conversationIdRef.current, 'assistant', finalAssistantContent, activeConversationTitle, payloadText)
+        } catch (persistErr) {
+          console.error('保存助手消息失败:', persistErr)
+        }
+      }
     }
   }
 
   return (
     <div className="flex flex-1 h-full overflow-hidden bg-slate-50 relative">
-      <div className="flex-1 flex flex-col h-full max-w-5xl mx-auto w-full shadow-sm bg-white border-x">
-        {/* Header */}
+      <div className="w-72 h-full border-r border-slate-200 bg-white flex flex-col shrink-0">
+        <div className="p-3 border-b border-slate-100">
+          <button
+            onClick={handleCreateConversation}
+            disabled={conversationLoading || conversationActionLoading}
+            className="w-full inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            <Plus size={14} />
+            新建对话
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {conversations.map((item) => {
+            const active = item.id === conversationIdRef.current
+            const renaming = renamingConversationId === item.id
+            return (
+              <div key={item.id} className={cn("rounded-lg border", active ? "border-blue-200 bg-blue-50" : "border-transparent hover:border-slate-200 hover:bg-slate-50")}>
+                {renaming ? (
+                  <div className="p-2 space-y-2">
+                    <input
+                      value={renamingTitle}
+                      onChange={(e) => setRenamingTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSubmitRenameConversation(item.id)
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault()
+                          handleCancelRenameConversation()
+                        }
+                      }}
+                      maxLength={120}
+                      className="w-full px-2 py-1.5 text-sm rounded border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={handleCancelRenameConversation}
+                        className="px-2 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-100"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => handleSubmitRenameConversation(item.id)}
+                        disabled={conversationActionLoading}
+                        className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 p-2">
+                    <button
+                      onClick={() => handleSwitchConversation(item.id)}
+                      className={cn("flex-1 min-w-0 text-left text-sm truncate", active ? "text-blue-700 font-medium" : "text-slate-700")}
+                    >
+                      {item.title || '未命名会话'}
+                    </button>
+                    <button
+                      onClick={() => handleStartRenameConversation(item)}
+                      disabled={conversationActionLoading}
+                      className="p-1.5 rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteConversation(item.id)}
+                      disabled={conversationActionLoading}
+                      className="p-1.5 rounded text-rose-500 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col h-full shadow-sm bg-white">
         <div className="p-4 border-b bg-white/80 backdrop-blur z-10 sticky top-0">
-          <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-            <Bot size={20} className="text-blue-500" />
-            智能问答助手
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+              <Bot size={20} className="text-blue-500" />
+              智能问答助手
+            </h2>
+            <div className="text-xs text-slate-500">
+              {activeConversationTitle || '未命名会话'}
+            </div>
+          </div>
+          {conversationError && (
+            <div className="mt-2 text-xs text-rose-600">{conversationError}</div>
+          )}
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
           {messages.map((msg, idx) => (
             <div key={idx} className={cn(
@@ -2029,62 +3934,355 @@ function ChatInterface({ role }) {
                   ? "bg-blue-600 text-white rounded-tr-sm" 
                   : "bg-white border border-slate-100 text-slate-700 rounded-tl-sm"
               )}>
+                {msg.toolDraft && (
+                  <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                    <div className="text-xs text-blue-700 font-semibold mb-2">
+                      已识别技能：{msg.toolDraft.toolName}
+                    </div>
+                    <div className="text-xs text-slate-600 mb-3">
+                      {msg.toolDraft.toolSpec?.description || '请填写参数并执行'}
+                    </div>
+                    {msg.toolDraft.toolSpec?.parameters_schema?.properties && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                        {Object.keys(msg.toolDraft.toolSpec.parameters_schema.properties).map((key) => (
+                          <input
+                            key={key}
+                            value={toolForms[msg.toolDraft.toolCallId]?.args?.[key] || ''}
+                            onChange={(e) => handleToolArgChange(msg.toolDraft.toolCallId, key, e.target.value)}
+                            placeholder={key}
+                            className="px-2 py-1.5 rounded border border-slate-300 text-xs bg-white"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {msg.toolDraft.toolSpec?.upload_required && (
+                      <div className="mb-3">
+                        <div className="text-[11px] text-slate-500 mb-1">
+                          支持文件：{(msg.toolDraft.toolSpec.accepted_file_types || []).join(', ') || '不限'}
+                        </div>
+                        <input
+                          type="file"
+                          multiple
+                          onChange={(e) => handleToolFileChange(msg.toolDraft.toolCallId, e.target.files)}
+                          className="text-xs"
+                        />
+                        {toolForms[msg.toolDraft.toolCallId]?.files?.length > 0 && (
+                          <div className="mt-1 text-[11px] text-slate-600">
+                            已选择 {toolForms[msg.toolDraft.toolCallId].files.length} 个文件
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleApproveTool(msg.toolDraft)}
+                      disabled={!!toolPending[msg.toolDraft.toolCallId]}
+                      className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {toolPending[msg.toolDraft.toolCallId] ? '执行中...' : '执行技能'}
+                    </button>
+                    {toolResults[msg.toolDraft.toolCallId] && (
+                      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                        <div className="text-xs font-semibold text-emerald-700">
+                          {toolResults[msg.toolDraft.toolCallId].summary || '执行完成'}
+                        </div>
+                        {toolResults[msg.toolDraft.toolCallId].error_message && (
+                          <div className="text-xs text-rose-600 mt-1">
+                            {toolResults[msg.toolDraft.toolCallId].error_message}
+                          </div>
+                        )}
+                        {toolResults[msg.toolDraft.toolCallId].files && toolResults[msg.toolDraft.toolCallId].files.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {toolResults[msg.toolDraft.toolCallId].files.map((f) => (
+                              <a
+                                key={f.file_id}
+                                href={f.download_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1 text-xs text-blue-700 hover:underline"
+                              >
+                                <Download size={12} />
+                                <span>{f.file_name}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {msg.clarify && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs text-amber-700 font-semibold mb-2">
+                      需要补充意图
+                    </div>
+                    <div className="text-xs text-slate-700 mb-2">
+                      {msg.clarify.question || '请补充你的目标，我再继续执行。'}
+                    </div>
+                    {Array.isArray(msg.clarify.suggestions) && msg.clarify.suggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {msg.clarify.suggestions.map((item, i) => (
+                          <button
+                            key={`${item}-${i}`}
+                            onClick={() => handleClarifySuggestionClick(item)}
+                            className="px-2.5 py-1 rounded-full bg-white border border-amber-300 text-[11px] text-amber-800 hover:bg-amber-100"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {planDrafts[msg.id] && (
+                  <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                    {(() => {
+                      const draft = planDrafts[msg.id]
+                      const uiState = planUiStates[msg.id] || {}
+                      const expanded = uiState.manualExpanded
+                        ? true
+                        : uiState.manualCollapsed
+                          ? false
+                          : !!msg.isStreaming
+                      const editMode = !!uiState.editMode
+                      const streamState = buildPlanStreamState(draft, msg)
+                      const analysisStatusByNo = (draft.analysisSteps || []).reduce((acc, step) => {
+                        const no = Number(step?.step_no || 0)
+                        if (no > 0) acc[no] = step?.status || 'streaming'
+                        return acc
+                      }, {})
+                      const plannedSteps = Array.isArray(draft.editedSteps) ? draft.editedSteps : []
+                      const normalizedStatuses = plannedSteps.map((step, sIdx) => String(analysisStatusByNo[step.stepNo || sIdx + 1] || 'pending').toLowerCase())
+                      const plannedCount = plannedSteps.length
+                      const executedCount = normalizedStatuses.filter(status => status !== 'pending').length
+                      const completedCount = normalizedStatuses.filter(status => status === 'completed' || status === 'done').length
+                      const hasWaitingApproval = normalizedStatuses.includes('waiting_approval')
+                      const hasHardPending = normalizedStatuses.some(status => status === 'pending' || status === 'streaming')
+                      const summaryFallbackText = plannedCount <= 0
+                        ? '已输出阶段汇总'
+                        : hasHardPending
+                          ? `已按顺序执行 ${executedCount}/${plannedCount} 步，正在继续执行后续步骤。`
+                          : hasWaitingApproval
+                            ? `已按顺序执行 ${executedCount}/${plannedCount} 步，工具步骤待审批，阶段汇总已生成。`
+                            : completedCount >= plannedCount
+                              ? `已按顺序执行 ${completedCount}/${plannedCount} 步，最终汇总已生成。`
+                              : `已按顺序执行 ${executedCount}/${plannedCount} 步，阶段汇总已生成。`
+                      return (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-semibold text-slate-700">分析链路总览</div>
+                            <button
+                              onClick={() => togglePlanExpanded(msg.id, msg)}
+                              className="text-[11px] text-slate-600 hover:text-slate-800"
+                            >
+                              {expanded ? '收起' : '展开'}
+                            </button>
+                          </div>
+                          {expanded && (
+                            <>
+                              <div className="space-y-1">
+                                <div className="text-xs text-slate-700">{streamState.text}</div>
+                                <div className="h-1.5 w-full rounded bg-slate-200 overflow-hidden">
+                                  <div
+                                    className="h-full rounded bg-blue-500 transition-all duration-300"
+                                    style={{ width: `${streamState.progress}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div className="text-xs text-slate-600 whitespace-pre-wrap">
+                                深度思考：{draft.deepThinking || '暂无'}
+                              </div>
+                              {!editMode && (
+                                <div className="space-y-1">
+                                  {(draft.editedSteps || []).map((step, sIdx) => (
+                                    <div key={`${msg.id}-step-text-${sIdx}`} className="text-xs text-slate-700">
+                                      {`${step.stepNo || sIdx + 1}. [${step.route || 'AUTO'}] ${step.label || '步骤'}：${step.goal || '无目标'}${step.query ? `（查询：${step.query}）` : ''}${step.toolName ? `（工具：${step.toolName}）` : ''}（状态：${analysisStatusByNo[step.stepNo || sIdx + 1] || 'pending'}）`}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {editMode && (
+                                <>
+                                  <div>
+                                    <button
+                                      onClick={() => handlePlanStepAdd(msg.id)}
+                                      className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                                    >
+                                      新增步骤
+                                    </button>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {(draft.editedSteps || []).map((step, sIdx) => (
+                                      <div key={`${msg.id}-step-${sIdx}`} className="rounded-lg border border-slate-200 bg-white p-2">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <div className="text-xs font-semibold text-slate-700">步骤 {step.stepNo}</div>
+                                          <div className="text-[10px] px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700">
+                                            {step.route || 'AUTO'}
+                                          </div>
+                                        </div>
+                                        <input
+                                          value={step.label}
+                                          onChange={(e) => handlePlanStepFieldChange(msg.id, sIdx, 'label', e.target.value)}
+                                          className="w-full mb-1 px-2 py-1 rounded border border-slate-300 text-xs"
+                                          placeholder="步骤标签"
+                                        />
+                                        <textarea
+                                          value={step.goal}
+                                          onChange={(e) => handlePlanStepFieldChange(msg.id, sIdx, 'goal', e.target.value)}
+                                          className="w-full mb-1 px-2 py-1 rounded border border-slate-300 text-xs h-14 resize-none"
+                                          placeholder="步骤目标"
+                                        />
+                                        <input
+                                          value={step.query}
+                                          onChange={(e) => handlePlanStepFieldChange(msg.id, sIdx, 'query', e.target.value)}
+                                          className="w-full mb-1 px-2 py-1 rounded border border-slate-300 text-xs"
+                                          placeholder="步骤查询词"
+                                        />
+                                        <input
+                                          value={step.toolName}
+                                          onChange={(e) => handlePlanStepFieldChange(msg.id, sIdx, 'toolName', e.target.value)}
+                                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs"
+                                          placeholder="工具名（可选）"
+                                        />
+                                        <div className="mt-2 flex gap-2 flex-wrap">
+                                          <button
+                                            onClick={() => handlePlanStepMove(msg.id, sIdx, -1)}
+                                            disabled={sIdx === 0}
+                                            className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs hover:bg-slate-200 disabled:opacity-40"
+                                          >
+                                            上移
+                                          </button>
+                                          <button
+                                            onClick={() => handlePlanStepMove(msg.id, sIdx, 1)}
+                                            disabled={sIdx === (draft.editedSteps || []).length - 1}
+                                            className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs hover:bg-slate-200 disabled:opacity-40"
+                                          >
+                                            下移
+                                          </button>
+                                          <button
+                                            onClick={() => handlePlanStepRemove(msg.id, sIdx)}
+                                            disabled={(draft.editedSteps || []).length <= 1}
+                                            className="px-2 py-1 rounded bg-rose-100 text-rose-700 text-xs hover:bg-rose-200 disabled:opacity-40"
+                                          >
+                                            删除
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    <select
+                                      value={draft.rerunMode || 'AUTO'}
+                                      onChange={(e) => handlePlanConfigChange(msg.id, 'rerunMode', e.target.value)}
+                                      className="px-2 py-1 rounded border border-slate-300 text-xs bg-white"
+                                    >
+                                      <option value="AUTO">AUTO</option>
+                                      <option value="PARTIAL_RERUN">PARTIAL_RERUN</option>
+                                      <option value="FULL_RERUN">FULL_RERUN</option>
+                                    </select>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={draft.restartFromStep || 1}
+                                      onChange={(e) => handlePlanConfigChange(msg.id, 'restartFromStep', Number(e.target.value) || 1)}
+                                      className="px-2 py-1 rounded border border-slate-300 text-xs"
+                                      placeholder="从第几步开始"
+                                    />
+                                    <input
+                                      value={draft.adjustmentInstruction || ''}
+                                      onChange={(e) => handlePlanConfigChange(msg.id, 'adjustmentInstruction', e.target.value)}
+                                      className="px-2 py-1 rounded border border-slate-300 text-xs"
+                                      placeholder="人工修改说明"
+                                    />
+                                  </div>
+                                </>
+                              )}
+                              <div className="flex gap-2 flex-wrap">
+                                {!editMode ? (
+                                  <button
+                                    onClick={() => togglePlanEditMode(msg.id, true)}
+                                    className="px-3 py-1.5 rounded bg-slate-700 text-white text-xs hover:bg-slate-800"
+                                  >
+                                    我要修改计划
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => togglePlanEditMode(msg.id, false)}
+                                    className="px-3 py-1.5 rounded bg-slate-200 text-slate-700 text-xs hover:bg-slate-300"
+                                  >
+                                    退出编辑
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => runWithPlanDraft(msg.id, true)}
+                                  disabled={loading}
+                                  className="px-3 py-1.5 rounded bg-slate-700 text-white text-xs hover:bg-slate-800 disabled:opacity-50"
+                                >
+                                  仅重规划
+                                </button>
+                                <button
+                                  onClick={() => runWithPlanDraft(msg.id, false)}
+                                  disabled={loading}
+                                  className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  按新计划执行
+                                </button>
+                              </div>
+                              {msg.analysisSummary && (
+                                <div className="text-xs text-emerald-800 whitespace-pre-wrap">
+                                  总结：{msg.analysisSummary.final_answer || summaryFallbackText}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
                 {(() => {
                   let rawContent = msg.content || '';
-                  // Clean up citation newlines: 
-                  // 1. Remove newlines before citations to keep them inline with text
                   rawContent = rawContent.replace(/[\r\n]+(?=\s*\[(?:ID:\s*)?\d+\])/g, ' ');
 
                   let thought = null;
                   let answer = rawContent;
-                  let hasStartTag = answer.includes('<think>');
-                  let hasEndTag = answer.includes('</think>');
-                  let autoAddedThink = false;
-
-                  // Auto-add <think> if missing at start, but implied by </think> or user preference for start
-                  if (hasEndTag && !hasStartTag) {
-                      answer = '<think>' + answer;
-                      hasStartTag = true;
-                      autoAddedThink = true;
-                  } else if (!hasStartTag && !hasEndTag) {
-                      // If streaming, assume thought at start (as requested)
-                      // If finished, we'll revert if it wasn't a thought
-                      answer = '<think>' + answer;
-                      hasStartTag = true;
-                      autoAddedThink = true;
+                  const start = answer.indexOf('<think>');
+                  const end = answer.indexOf('</think>');
+                  if (start !== -1 && end > start) {
+                    thought = answer.substring(start + 7, end);
+                    answer = answer.substring(0, start) + answer.substring(end + 8);
+                  } else if (start !== -1 && msg.isStreaming) {
+                    thought = answer.substring(start + 7);
+                    answer = answer.substring(0, start);
+                  } else if (start !== -1) {
+                    answer = answer.replace('<think>', '')
+                  } else if (end !== -1) {
+                    answer = answer.replace('</think>', '')
                   }
-
-                  if (hasStartTag) {
-                      const start = answer.indexOf('<think>');
-                      const end = answer.indexOf('</think>');
-                      
-                      if (end !== -1) {
-                          // Closed thought
-                          thought = answer.substring(start + 7, end);
-                          answer = answer.substring(0, start) + answer.substring(end + 8);
-                      } else {
-                          // Unclosed thought
-                          if (msg.isStreaming) {
-                              // While streaming, show as thought
-                              thought = answer.substring(start + 7);
-                              answer = answer.substring(0, start);
-                          } else {
-                              // Finished without closing </think>
-                              if (autoAddedThink) {
-                                  // It wasn't a thought, revert to normal
-                                  thought = null;
-                                  answer = rawContent;
-                              } else {
-                                  // Explicit unclosed thought
-                                  thought = answer.substring(start + 7);
-                                  answer = answer.substring(0, start);
-                              }
-                          }
-                      }
-                  }
+                  answer = answer.replace(/<\/?think>/g, '')
 
                   return (
                     <>
+                      {msg.sourceTag && (
+                        <div className="mb-2 inline-flex px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700">
+                          来源：{msg.sourceTag}
+                        </div>
+                      )}
+                      {msg.logicFlow && (
+                        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <div className="text-[11px] font-semibold text-slate-600 mb-1">分析链路</div>
+                          <div className="space-y-1">
+                            {msg.logicFlow.split('\n').map((line, i) => {
+                              const text = (line || '').trim()
+                              if (!text) return null
+                              return (
+                                <div key={`${text}-${i}`} className="text-xs text-slate-600">
+                                  {text}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {thought && (
                         <ThoughtBlock 
                           content={thought} 
@@ -2102,8 +4300,6 @@ function ChatInterface({ role }) {
                     </>
                   )
                 })()}
-                
-                {/* References list - Appended at the end as requested */}
                 {msg.references && msg.references.length > 0 && !msg.isStreaming && (
                   <div className="mt-4 pt-3 border-t border-slate-100">
                     <div className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1">
@@ -2149,8 +4345,19 @@ function ChatInterface({ role }) {
           />
         )}
 
-        {/* Input Area */}
         <div className="p-4 bg-white border-t">
+          <div className="mb-3 flex flex-wrap gap-2">
+            {quickRouteExamples.map((item) => (
+              <button
+                key={item}
+                onClick={() => handleSend(item)}
+                disabled={conversationLoading}
+                className="px-2.5 py-1 text-xs rounded-full border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 disabled:opacity-50"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <textarea
               value={input}
@@ -2163,16 +4370,26 @@ function ChatInterface({ role }) {
               }}
               placeholder="请输入您的问题..."
               className="w-full pl-4 pr-12 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-[56px] text-sm"
-              disabled={false}
+              disabled={conversationLoading}
             />
             <button
-              onClick={handleSend}
-              disabled={!input.trim()}
+              onClick={() => handleSend()}
+              disabled={!input.trim() || conversationLoading}
               className="absolute right-2 top-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+              {(loading || conversationLoading) ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>
+          {loading && (
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={handleStopGeneration}
+                className="px-3 py-1.5 text-xs rounded border border-rose-300 text-rose-600 hover:bg-rose-50"
+              >
+                中断生成
+              </button>
+            </div>
+          )}
           <p className="text-center text-xs text-slate-400 mt-2">
             AI 生成内容仅供参考，请以原始文档为准。
           </p>
@@ -2183,29 +4400,60 @@ function ChatInterface({ role }) {
 }
 
 function App() {
-  const [role, setRole] = useState(null) // 'admin' | 'user' | null
+  const [authSession, setAuthSession] = useState(() => loadAuthSession())
   const [activeTab, setActiveTab] = useState('chat')
+  const role = authSession?.user?.role || null
+  const username = authSession?.user?.username || ''
+
+  useEffect(() => {
+    const syncAuthExpired = () => {
+      clearAuthSession()
+      setAuthSession(null)
+      setActiveTab('chat')
+    }
+    window.addEventListener('ai4kb-auth-expired', syncAuthExpired)
+    return () => window.removeEventListener('ai4kb-auth-expired', syncAuthExpired)
+  }, [])
+
+  const handleLogin = async ({ username: loginUsername, password }) => {
+    const data = await loginByPassword(loginUsername, password)
+    const nextSession = {
+      token: data?.token,
+      user: data?.user
+    }
+    if (!nextSession.token || !nextSession.user?.role) {
+      throw new Error('登录返回数据不完整')
+    }
+    saveAuthSession(nextSession)
+    setAuthSession(nextSession)
+    setActiveTab(isSuperAdminRole(nextSession.user.role) ? 'super_overview' : (isAdminLikeRole(nextSession.user.role) ? 'datasets' : 'chat'))
+  }
+
+  const handleLogout = () => {
+    clearAuthSession()
+    setAuthSession(null)
+    setActiveTab('chat')
+  }
 
   if (!role) {
-    return <LoginScreen onLogin={(r) => {
-      setRole(r)
-      // Default tabs
-      setActiveTab(r === 'admin' ? 'datasets' : 'chat')
-    }} />
+    return <LoginScreen onLogin={handleLogin} />
   }
 
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar 
         role={role} 
+        username={username}
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        onLogout={() => setRole(null)} 
+        onLogout={handleLogout}
       />
       <main className="flex-1 h-full overflow-hidden relative">
         {activeTab === 'chat' && <ChatInterface role={role} />}
-        {activeTab === 'datasets' && role === 'admin' && <DatasetManager />}
-        {activeTab === 'permissions' && role === 'admin' && <PermissionManager />}
+        {activeTab === 'super_overview' && isSuperAdminRole(role) && <SuperAdminOverview />}
+        {activeTab === 'datasets' && isAdminLikeRole(role) && <DatasetManager />}
+        {activeTab === 'permissions' && isAdminLikeRole(role) && <PermissionManager />}
+        {activeTab === 'route_samples' && isSuperAdminRole(role) && <RouteSampleManager />}
       </main>
     </div>
   )

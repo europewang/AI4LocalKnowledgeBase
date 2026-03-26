@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>面向测绘生产的AI辅助智能体 - 原型</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" aria-label="侧边栏">
+        <div class="brand">
+          <div class="brand__avatar" aria-hidden="true"></div>
+          <div class="brand__text">
+            <div class="brand__name">测绘智能体</div>
+            <div class="brand__sub">原型 · 仅前端展示</div>
+          </div>
+        </div>
+
+        <button class="primary-btn" id="newChatBtn" type="button">
+          <span class="primary-btn__dot" aria-hidden="true"></span>
+          新对话
+          <span class="primary-btn__hint" aria-hidden="true">Ctrl K</span>
+        </button>
+
+        <nav class="nav">
+          <div class="nav__group">
+            <div class="nav__title">功能</div>
+            <button class="nav__item is-active" type="button" data-view="home">
+              <span class="nav__icon" aria-hidden="true">◎</span>
+              首页
+            </button>
+            <button class="nav__item" type="button" data-view="agents">
+              <span class="nav__icon" aria-hidden="true">▦</span>
+              智能体
+            </button>
+            <button class="nav__item" type="button" data-view="history">
+              <span class="nav__icon" aria-hidden="true">≡</span>
+              历史对话
+            </button>
+          </div>
+        </nav>
+
+        <div class="history">
+          <div class="history__title">历史对话</div>
+          <div class="history__list" id="historyList"></div>
+        </div>
+      </aside>
+
+      <main class="main" aria-label="主内容区">
+        <header class="topbar">
+          <div class="topbar__crumb" id="topbarCrumb">新对话</div>
+          <div class="topbar__meta">测绘生产 · AI 辅助</div>
+        </header>
+
+        <section class="stage" id="stage">
+          <div class="hero" id="hero">
+            <div class="hero__brand" aria-label="应用名称">
+              <div class="hero__brandName">测绘智能体</div>
+              <div class="hero__brandSub">原型 · 仅前端展示</div>
+            </div>
+            <div class="hero__title">有什么我能帮你的吗？</div>
+            <div class="hero__chips" id="chips"></div>
+          </div>
+
+          <div class="chat" id="chat" hidden>
+            <div class="chat__list" id="chatList" aria-live="polite"></div>
+          </div>
+
+          <div class="agents-page" id="agentsPage" hidden>
+            <div class="agents-page__header">
+              <div>
+                <div class="agents-page__title">发现智能体</div>
+                <div class="agents-page__sub">选择一个专业功能，进入参数化使用方式（原型展示）</div>
+              </div>
+              <div class="agents-page__tools">
+                <label class="agents-search" aria-label="搜索智能体">
+                  <span class="agents-search__icon" aria-hidden="true">⌕</span>
+                  <input id="agentsSearchInput" type="text" placeholder="搜索智能体" />
+                </label>
+                <button class="agents-create" type="button" id="createAgentBtn">
+                  <span aria-hidden="true">+</span>
+                  创建智能体
+                </button>
+              </div>
+            </div>
+
+            <div class="agents-tabs" role="tablist" aria-label="分类">
+              <button class="tab is-active" type="button" data-cat="work" role="tab">
+                工作
+              </button>
+              <button class="tab" type="button" data-cat="study" role="tab">学习</button>
+              <button class="tab" type="button" data-cat="create" role="tab">创作</button>
+              <button class="tab" type="button" data-cat="life" role="tab">生活</button>
+            </div>
+
+            <div class="agents-grid" id="agentsGrid" aria-label="智能体列表"></div>
+          </div>
+
+          <div class="agent-detail" id="agentDetail" hidden>
+            <div class="agent-detail__header">
+              <button class="back-btn" type="button" id="agentBackBtn">
+                <span aria-hidden="true">‹</span>
+                返回
+              </button>
+              <div class="agent-detail__headText">
+                <div class="agent-detail__title" id="agentDetailTitle"></div>
+                <div class="agent-detail__sub" id="agentDetailSub"></div>
+              </div>
+            </div>
+
+            <div class="agent-detail__panel">
+              <div class="agent-detail__sectionTitle">专业使用方式（原型）</div>
+              <div class="agent-detail__desc" id="agentDetailDesc"></div>
+              <div class="agent-detail__sectionTitle">典型需要输入</div>
+              <div class="agent-detail__tags" id="agentDetailTags"></div>
+              <div class="agent-detail__hint">
+                说明：这里不实现具体参数表单与计算逻辑，仅展示“专业页面入口”的原型效果。
+              </div>
+              <div class="agent-detail__actions">
+                <button class="agent-detail__ghost" type="button" id="agentDetailToListBtn">
+                  返回智能体列表
+                </button>
+                <button class="agent-detail__primary" type="button" id="agentDetailToHomeBtn">
+                  在主页直接对话（自动调用技能）
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal" id="agentModal" hidden role="dialog" aria-modal="true">
+            <div class="modal__mask" data-close="true"></div>
+            <div class="modal__panel">
+              <div class="modal__top">
+                <div class="modal__topLeft">
+                  <div class="modal__icon" aria-hidden="true">AI</div>
+                  <div>
+                    <div class="modal__title" id="modalTitle"></div>
+                    <div class="modal__sub" id="modalSub"></div>
+                  </div>
+                </div>
+                <button class="modal__close" type="button" data-close="true" aria-label="关闭">
+                  ×
+                </button>
+              </div>
+              <div class="modal__body">
+                <div class="modal__sectionTitle">专业使用方式（原型）</div>
+                <div class="modal__desc" id="modalDesc"></div>
+                <div class="modal__sectionTitle">典型需要输入</div>
+                <div class="modal__tags" id="modalTags"></div>
+              </div>
+              <div class="modal__footer">
+                <button class="modal__ghost" type="button" data-close="true">返回列表</button>
+                <button class="modal__primary" type="button" id="modalToChatBtn">
+                  在主页直接对话（自动调用技能）
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="composer" id="composerFooter" aria-label="输入区">
+          <div class="composer__actions" id="quickActions"></div>
+          <div class="composer__box">
+            <button class="icon-btn" id="attachBtn" type="button" aria-label="附件">
+              <span aria-hidden="true">⟐</span>
+            </button>
+            <textarea
+              class="composer__input"
+              id="composerInput"
+              rows="1"
+              placeholder="发送消息，或选择一个智能体开始"
+            ></textarea>
+            <button class="send-btn" id="sendBtn" type="button" aria-label="发送">
+              发送
+            </button>
+          </div>
+          <div class="composer__hint">
+            Enter 发送 · Shift+Enter 换行 · 本页面为静态原型，不含后端
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <template id="tplChip">
+      <button class="chip" type="button">
+        <span class="chip__name"></span>
+        <span class="chip__desc"></span>
+      </button>
+    </template>
+
+    <template id="tplHistoryItem">
+      <button class="history-item" type="button">
+        <div class="history-item__title"></div>
+        <div class="history-item__meta"></div>
+      </button>
+    </template>
+
+    <template id="tplMessage">
+      <div class="msg">
+        <div class="msg__avatar" aria-hidden="true"></div>
+        <div class="msg__bubble"></div>
+      </div>
+    </template>
+
+    <template id="tplAgentCard">
+      <button class="agent-card" type="button">
+        <div class="agent-card__icon" aria-hidden="true"></div>
+        <div class="agent-card__main">
+          <div class="agent-card__title"></div>
+          <div class="agent-card__desc"></div>
+          <div class="agent-card__meta"></div>
+        </div>
+        <div class="agent-card__go" aria-hidden="true">›</div>
+      </button>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

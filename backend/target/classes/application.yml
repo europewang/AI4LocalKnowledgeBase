@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: ai4kb-backend
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6381}
+      password: ${REDIS_PASSWORD:infini_rag_flow}
+      database: 0
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     # 支持通过环境变量配置 Host/Port，默认值为 localhost:3307 (本地开发)
@@ -31,11 +37,25 @@ ragflow:
   # You can get it from RAGFlow UI or database
   api-key: ${RAGFLOW_API_KEY:ragflow-system-admin-key}
 
-# Processor Configuration (Phase 2 Extensibility)
+# Engine LLM Configuration
 ai4kb:
+  auth:
+    jwt-secret: ${AI4KB_JWT_SECRET:ai4kb-dev-jwt-secret-change-me}
+    token-ttl-seconds: ${AI4KB_TOKEN_TTL_SECONDS:28800}
+    legacy-default-password: ${AI4KB_LEGACY_DEFAULT_PASSWORD:ChangeMe123!}
+  llm:
+    base-url: ${LLM_BASE_URL:http://localhost:8085/v1}
+    api-key: ${LLM_API_KEY:empty}
+    model: ${LLM_MODEL:deepseek-r1-distill-qwen-14b-custom}
+  router:
+    tool-confidence-threshold: ${ROUTER_TOOL_CONFIDENCE_THRESHOLD:0.55}
+    clarify-confidence-threshold: ${ROUTER_CLARIFY_CONFIDENCE_THRESHOLD:0.45}
+    race-confidence-threshold: ${ROUTER_RACE_CONFIDENCE_THRESHOLD:0.75}
+    local-router-enabled: ${ROUTER_LOCAL_ROUTER_ENABLED:false}
+    local-router-auto-threshold: ${ROUTER_LOCAL_ROUTER_AUTO_THRESHOLD:0.90}
   processor:
     # Options: "rag" (default, calls RAGFlow), "agent" (mock for Phase 2)
-    mode: ${PROCESSOR_MODE:rag}
+    mode: ${PROCESSOR_MODE:agent}
 
 
 logging:

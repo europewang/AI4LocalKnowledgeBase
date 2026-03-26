@@ -1,0 +1,9 @@
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/engine/controller/AgentControllerAuthContextTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/skill/service/SkillRegistryServiceTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/engine/service/RouteSampleServiceTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/user/controller/UserAdminControllerTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessorStreamTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/common/auth/AuthInterceptorTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/engine/service/EngineOrchestratorToolDraftTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/admin/controller/AdminControllerRouteSampleTest.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/test/java/com/ai4kb/backend/user/service/AuthServiceTest.java
