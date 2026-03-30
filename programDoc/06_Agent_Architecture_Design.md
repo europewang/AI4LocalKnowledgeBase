@@ -95,10 +95,17 @@
 - `user/mapper/UserConversationMessageMapper.java`：用户会话消息数据访问接口。
 - `skill/service/SkillRegistryService.java`：工具目录与权限过滤、关键词匹配、草稿载荷组装。
 - `skill/service/SkillExecutionService.java`：工具执行请求编排、结果标准化、输出文件注册。
+- `skill/controller/SkillProtocolAdminController.java`：动态技能管理入口（注册、列表、下线、审计查询）。
+- `skill/service/DynamicSkillRegistryService.java`：动态技能注册表服务（在线状态、版本、ToolSpec 映射）。
+- `skill/service/DynamicSkillProtocolClient.java`：统一 HTTP 协议调用客户端（invoke 请求封装与结果解析）。
+- `skill/service/DynamicSkillAuditService.java`：动态技能调用审计服务（开始/成功/失败落库）。
 - `skill/service/ToolFileStorageService.java`：工具输入/输出文件落盘与 fileId 资源映射。
+- `skill/config/SkillSchemaMigrationRunner.java`：动态技能注册表与审计表启动期迁移。
 - `skill/model/ToolExecutionRequest.java`：工具执行请求载荷模型。
 - `skill/model/ToolExecutionResult.java`：工具执行结果与产出文件模型。
 - `skill/model/ToolSpec.java`：工具规格定义模型（触发词、参数 Schema、输入输出能力）。
+- `skill/impl/cad_text_extractor/CadTextExtractorProtocolController.java`：cad_text_extractor 的协议化 manifest/health/invoke 暴露实现。
+- `skill/impl/cad_text_extractor/CadTextExtractorSkillAutoRegisterRunner.java`：cad_text_extractor 启动自注册到动态技能表。
 - `skill/executor/impl/SendEmailMockSkillExecutor.java`：邮件工具 mock 执行器（联调用）。
 - `rag/processor/ChatProcessor.java`：RAG 对话处理器统一接口。
 - `rag/processor/impl/RagDirectProcessor.java`：RAGFlow 直连实现，含数据集权限过滤与流式响应归一化。

@@ -3607,3 +3607,211 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 **结论**:
 *   多任务回答将按步骤拆分为独立段落，不再合并成单个 `<p>`；
 *   展示顺序与分析步骤顺序保持一致，阅读与核对显著更清晰。
+
+## 2026-03-27: Skill 模块去除写死注册链路，仅保留 HTTP 动态注册
+
+**操作人**: AI Assistant (Trae IDE)
+
+**用户目标**:
+- 删除 skill 中原有写死的注册方式；
+- 仅保留当前 HTTP 协议动态注册方式，并完成可用性验证。
+
+**本次改动**:
+1. Skill 动态管理接口补齐：
+   - 新增 `backend/src/main/java/com/ai4kb/backend/skill/controller/SkillProtocolAdminController.java`；
+   - 提供动态技能 `register/list/offline/audit` 接口，统一走 `t_skill_registry` 与 `t_skill_call_audit`。
+2. cad_text_extractor 协议化与自注册：
+   - 新增 `backend/src/main/java/com/ai4kb/backend/skill/impl/cad_text_extractor/CadTextExtractorProtocolController.java`；
+   - 暴露 `manifest/health/invoke` 三个标准协议端点；
+   - 新增 `CadTextExtractorSkillAutoRegisterRunner.java`，启动自动写入动态技能注册表。
+3. 执行链路切换为 HTTP-only：
+   - 修改 `backend/src/main/java/com/ai4kb/backend/skill/service/SkillRegistryService.java`，可用工具列表来源切换为动态在线技能；
+   - 修改 `backend/src/main/java/com/ai4kb/backend/skill/service/SkillExecutionService.java`，执行由本地执行器切换为 `DynamicSkillProtocolClient` 远程调用；
+   - 在执行前后接入 `DynamicSkillAuditService`，写入调用审计状态与耗时。
+4. 测试与回归：
+   - 更新 `SkillRegistryServiceTest.java` 为动态注册表 mock 断言；
+   - 新增 `SkillExecutionServiceHttpAuditTest.java`，覆盖 HTTP 调用与审计成功收口。
+5. 编译期问题修复：
+   - 修复 `DynamicSkillProtocolClient.java` 中 `Map#getOrDefault` 泛型推断不兼容问题；
+   - 修复 `SkillRegistryService` 的 Spring 构造注入，避免启动时报 `No default constructor found`。
+
+**验证结果**:
+1. 单测：
+   - `mvn -Dtest=SkillRegistryServiceTest,SkillExecutionServiceHttpAuditTest test` 通过（3/3）。
+2. 编译：
+   - `mvn -DskipTests compile` 通过。
+3. 运行态接口验证（`--server.port=18083`）：
+   - `GET /api/admin/skills?onlineOnly=true` 初始可查到 `cad_text_extractor_indicator_verification`；
+   - `POST /api/admin/skills/{toolCode}/offline` 后再查 `onlineOnly=true` 返回空列表；
+   - 再次 `POST /api/admin/skills/register` 后可恢复在线可见，版本号递增至 `2`。
+
+**结论**:
+*   skill 主链路已切换为 HTTP 动态注册与调用；
+*   下线控制对查询结果生效；
+*   已删除运行时对“写死执行器注册”的依赖，满足“仅保留 HTTP 注册方式”目标。
+
+## 2026-03-27: Docker 启动并回归动态 Skill 在线/下线/上线链路
+
+**操作人**: AI Assistant (Trae IDE)
+
+**用户目标**:
+- 使用 Docker 启动服务并完成可用性测试。
+
+**执行动作**:
+1. Docker 构建与启动：
+   - 执行 `sudo -n docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend frontend`；
+   - 成功构建并启动 `ragflow-backend`、`ragflow-frontend`。
+2. 基础连通性验证：
+   - `docker compose ps` 确认：
+     - backend 映射 `8083->8083`，状态 `Up`；
+     - frontend 映射 `8086->80`，状态 `Up`。
+   - `POST /api/user/auth/login` 返回 `200` 且返回 token。
+3. 动态 Skill 链路回归（Docker backend: `http://127.0.0.1:8083`）：
+   - `GET /api/admin/skills?onlineOnly=true`：可查询到 `cad_text_extractor_indicator_verification`（ONLINE）；
+   - `POST /api/admin/skills/{toolCode}/offline`：返回 `ok`；
+   - 再次 `GET onlineOnly=true`：返回空数组，验证“下线不可查”；
+   - `POST /api/admin/skills/register` 重新上线后再次查询恢复可见，版本从 `3` 递增到 `4`。
+
+**结论**:
+*   Docker 启动成功，前后端服务可用；
+*   动态 Skill 的“在线查询 -> 下线隐藏 -> 重新上线恢复”在 Docker 环境验证通过。
+
+## 2026-03-27: chat/stream 端到端补测与动态技能协议入参兼容修复
+
+**操作人**: AI Assistant (Trae IDE)
+
+**用户目标**:
+- 在 Docker 环境完成 chat/stream 端到端验证：聊天命中 skill -> 调用执行 -> 审计可查；
+- 完善前端动态技能管理并完成前后端测试。
+
+**问题定位**:
+1. 首轮补测中，`tool/upload` 与 `tool/files` 均返回成功，但 `tool/approve` 返回的 `tool_result` 仍提示“缺少输入文件”。
+2. 追踪后确认是动态协议调用时 JSON 字段命名不一致：
+   - 调用端发送 `input_files`（snake_case）；
+   - 协议控制器 `InvokeRequest` 仅按 `inputFiles`（camelCase）绑定；
+   - 导致反序列化后 `inputFiles` 为空，执行器判定为缺少输入文件。
+
+**本次改动**:
+1. 后端协议兼容修复：
+   - 修改 `backend/src/main/java/com/ai4kb/backend/skill/impl/cad_text_extractor/CadTextExtractorProtocolController.java`；
+   - 在 `InvokeRequest` 与 `InputFileRequest` 字段上增加 `@JsonAlias`，同时兼容 snake_case 与 camelCase：
+     - `conversation_id` / `conversationId`
+     - `tool_call_id` / `toolCallId`
+     - `user_id` / `userId`
+     - `input_files` / `inputFiles`
+     - `file_id` / `fileId`
+     - `file_name` / `fileName`
+     - `absolute_path` / `absolutePath`
+     - `content_type` / `contentType`
+2. Docker 重新构建部署：
+   - 执行 `sudo -n docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend frontend`，使修复与前端改动生效。
+3. 前端能力完善：
+   - `frontend/src/App.jsx` 已新增 `SkillManager` 页面，支持：
+     - 动态技能列表查询（含仅在线筛选）；
+     - 技能在线/离线切换；
+     - 管理员侧可视化操作入口（super_admin 菜单）。
+
+**验证结果**:
+1. 前端质量校验：
+   - `frontend` 执行 `npm run lint` 通过；
+   - `frontend` 执行 `npm run build` 通过。
+2. 后端质量校验：
+   - `backend` 执行 `mvn -DskipTests compile` 通过；
+   - `backend` 执行 `mvn -Dtest=SkillExecutionServiceHttpAuditTest test` 通过。
+3. Docker chat/stream 端到端验证（`http://127.0.0.1:8083`）：
+   - 使用 query：`帮我执行指标校核工具` 成功命中 `tool_draft`；
+   - 上传 `竣工测试.dxf` 后，`GET /api/v1/agent/tool/files` 可查上传记录；
+   - `POST /api/v1/agent/tool/approve` 返回 `tool_result.success=true`；
+   - `tool_result_summary=指标校核完成，生成文件数：3`；
+   - `GET /api/admin/skills/audit` 可查到同一 `tool_call_id` 记录，`status=SUCCESS`，耗时已落审计。
+
+**结论**:
+*   已在 Docker 环境完成“命中 skill -> 执行 -> 审计可查”闭环验证；
+*   协议入参 snake_case/camelCase 兼容问题已修复，上传文件能被技能执行正确消费；
+*   前端动态技能管理能力与基础质量校验已完成。
+
+---
+
+## 2026-03-27 继续迭代：管理员新增/删除技能 + 聊天页技能侧边栏一键调用（含 Docker 验证）
+
+**操作人**: AI Assistant (Trae IDE)
+
+**用户目标**:
+- 管理员和超级管理员具备新增/删除 skill 能力，前端具备对应管理入口；
+- 聊天页提供独立 skill 侧边栏，可直接选择技能触发调用草稿，不再依赖提问命中；
+- 使用 Docker 完成联调与端到端验证。
+
+**本次改动**:
+1. 后端技能管理能力补齐：
+   - `backend/src/main/java/com/ai4kb/backend/skill/service/DynamicSkillRegistryService.java`
+     - 新增 `onlineSkill(toolCode, operatorUserId)`；
+     - 新增 `deleteSkill(toolCode)`。
+   - `backend/src/main/java/com/ai4kb/backend/skill/controller/SkillProtocolAdminController.java`
+     - 新增 `POST /api/admin/skills/{toolCode}/online`；
+     - 新增 `DELETE /api/admin/skills/{toolCode}`。
+2. 后端直接创建草稿能力：
+   - `backend/src/main/java/com/ai4kb/backend/skill/service/SkillRegistryService.java`
+     - 新增 `findAvailableToolByCode(userId, toolCode)`。
+   - `backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java`
+     - 新增 `createManualToolDraft(conversationId, userId, toolCode, query)`；
+     - 抽取复用 `createAndSaveDraft(...)` 与 `ensureConversationState(...)`；
+     - `buildToolDraftEvent(...)` 改为复用统一建草稿逻辑。
+   - `backend/src/main/java/com/ai4kb/backend/engine/controller/AgentController.java`
+     - 新增 `POST /api/v1/agent/tool/draft`，支持前端按 `toolCode` 直接生成 `tool_draft`。
+3. 前端功能增强（`frontend/src/App.jsx`）：
+   - 技能管理页新增：
+     - 新增/更新技能表单；
+     - 技能上线、下线、删除按钮与状态控制；
+   - 聊天页新增：
+     - 左侧会话栏底部“技能快捷调用”区域；
+     - 加载可用技能目录；
+     - 点击技能后调用 `/api/v1/agent/tool/draft` 创建草稿并注入现有审批执行流。
+4. 新增/更新测试：
+   - 新增 `backend/src/test/java/com/ai4kb/backend/skill/controller/SkillProtocolAdminControllerTest.java`；
+   - 新增 `backend/src/test/java/com/ai4kb/backend/engine/service/EngineOrchestratorManualDraftTest.java`；
+   - 更新 `backend/src/test/java/com/ai4kb/backend/engine/controller/AgentControllerAuthContextTest.java`；
+   - 更新 `backend/src/test/java/com/ai4kb/backend/skill/service/SkillRegistryServiceTest.java`。
+
+**验证结果**:
+1. 前端质量校验：
+   - `frontend` 执行 `npm run lint` 通过；
+   - `frontend` 执行 `npm run build` 通过。
+2. 后端质量校验：
+   - `backend` 执行 `mvn -DskipTests compile` 通过；
+   - `backend` 执行  
+     `mvn -Dtest=AgentControllerAuthContextTest,SkillRegistryServiceTest,SkillProtocolAdminControllerTest,EngineOrchestratorManualDraftTest test` 通过（11 tests, 0 failures）。
+3. Docker 联调与端到端验证（`http://127.0.0.1:8083`）：
+   - 执行 `sudo -n docker compose -f deploy/docker-compose-ragflow.yml up -d --build backend frontend` 成功；
+   - 通过 `POST /api/v1/agent/tool/draft` 成功创建草稿（示例 `tool_call_id=tc-9115ed6e-57df-4ec0-8293-2813641f2d73`）；
+   - 上传 `竣工测试.dxf` 后，`POST /api/v1/agent/tool/approve` 返回 SSE 事件：
+     - `event:tool_result`
+     - `success=true`
+     - `summary=指标校核完成，生成文件数：3`
+   - `GET /api/admin/skills/audit` 可查到同一 `tool_call_id` 且 `status=SUCCESS`。
+
+**结论**:
+*   管理员/超级管理员新增、上线/下线、删除 skill 能力已贯通（后端接口 + 前端页面）；
+*   聊天页已支持“技能侧边栏一键触发草稿”，可直接进入既有审批执行链路；
+*   Docker 环境下“直接选 skill -> 调用执行 -> 审计可查”闭环验证通过。
+
+---
+
+## 2026-03-30：移除 Xinference 启动脚本中的非量化 LLM 规格
+
+**操作人**: AI Assistant (Trae IDE)
+
+**用户目标**:
+- 在 `scripts/launch_xinference_models.py` 中去掉非量化大模型配置，仅保留量化版本。
+
+**本次改动**:
+1. 修改文件：
+   - `scripts/launch_xinference_models.py`
+2. 具体变更：
+   - 删除 `register_custom_model()` 内 `model_specs` 中 `quantization: "none"` 的 14B 规格；
+   - 保留 `quantization: "4-bit"` 的 14B 规格。
+
+**验证结果**:
+1. 执行 `python3 -m py_compile scripts/launch_xinference_models.py` 通过。
+
+**结论**:
+* 启动脚本已不再注册非量化 14B 规格，后续仅按 4-bit 量化配置启动该 LLM。

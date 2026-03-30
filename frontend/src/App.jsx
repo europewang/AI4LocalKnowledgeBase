@@ -210,6 +210,73 @@ async function fetchSuperAdminOverview() {
   return data || {}
 }
 
+async function fetchAdminSkills(onlineOnly = false) {
+  const res = await apiFetch(`/admin/skills?onlineOnly=${onlineOnly ? 'true' : 'false'}`)
+  if (!res.ok) throw new Error('加载技能列表失败')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function registerAdminSkill(payload) {
+  const res = await apiFetch('/admin/skills/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  })
+  if (!res.ok) throw new Error('新增技能失败')
+  return res.json()
+}
+
+async function deleteAdminSkill(toolCode) {
+  const res = await apiFetch(`/admin/skills/${encodeURIComponent(toolCode)}`, {
+    method: 'DELETE'
+  })
+  if (!res.ok) throw new Error('删除技能失败')
+  return res.json()
+}
+
+async function onlineSkill(toolCode) {
+  const res = await apiFetch(`/admin/skills/${encodeURIComponent(toolCode)}/online`, {
+    method: 'POST'
+  })
+  if (!res.ok) throw new Error('上线技能失败')
+  return res.json()
+}
+
+async function fetchSkillAudit(limit = 100) {
+  const n = Number.parseInt(String(limit), 10)
+  const safeLimit = Number.isNaN(n) ? 100 : Math.max(1, Math.min(n, 500))
+  const res = await apiFetch(`/admin/skills/audit?limit=${safeLimit}`)
+  if (!res.ok) throw new Error('加载技能审计失败')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function offlineSkill(toolCode) {
+  const res = await apiFetch(`/admin/skills/${encodeURIComponent(toolCode)}/offline`, {
+    method: 'POST'
+  })
+  if (!res.ok) throw new Error('下线技能失败')
+  return res.json()
+}
+
+async function fetchToolCatalog() {
+  const res = await apiFetch('/v1/agent/tool/catalog')
+  if (!res.ok) throw new Error('加载技能目录失败')
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
+async function createToolDraft(conversationId, toolCode, query = '') {
+  const res = await apiFetch('/v1/agent/tool/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, toolCode, query })
+  })
+  if (!res.ok) throw new Error('创建技能草稿失败')
+  return res.json()
+}
+
 async function createConversation(title = '') {
   const res = await apiFetch('/user/conversations', {
     method: 'POST',
@@ -722,11 +789,13 @@ function Sidebar({ role, username, activeTab, setActiveTab, onLogout }) {
     { id: 'super_overview', label: '管理员总览', icon: Users },
     { id: 'datasets', label: '知识库管理', icon: Database },
     { id: 'permissions', label: '权限分配', icon: Lock },
+    { id: 'skills', label: '技能管理', icon: Settings },
     { id: 'route_samples', label: '审计查询', icon: Brain },
     { id: 'chat', label: '调试对话', icon: MessageSquare },
   ] : (isAdminLikeRole(role) ? [
     { id: 'datasets', label: '知识库管理', icon: Database },
     { id: 'permissions', label: '权限分配', icon: Lock },
+    { id: 'skills', label: '技能管理', icon: Settings },
     { id: 'chat', label: '调试对话', icon: MessageSquare },
   ] : [
     { id: 'chat', label: '智能问答', icon: MessageSquare },
@@ -2088,6 +2157,435 @@ function RouteSampleManager() {
   )
 }
 
+function SkillManager() {
+  const [skills, setSkills] = useState([])
+  const [auditRows, setAuditRows] = useState([])
+  const [skillsLoading, setSkillsLoading] = useState(false)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [skillsError, setSkillsError] = useState('')
+  const [auditError, setAuditError] = useState('')
+  const [onlineOnly, setOnlineOnly] = useState(false)
+  const [auditLimit, setAuditLimit] = useState('100')
+  const [actionPending, setActionPending] = useState({})
+  const [registerPending, setRegisterPending] = useState(false)
+  const [registerForm, setRegisterForm] = useState({
+    toolCode: '',
+    toolName: '',
+    description: '',
+    protocolType: 'HTTP',
+    invokeUrl: '',
+    manifestUrl: '',
+    healthUrl: '',
+    triggerKeywords: '',
+    inputMode: 'FILE_AND_PARAMS',
+    outputMode: 'MIXED',
+    uploadRequired: true,
+    acceptedFileTypes: '.dxf',
+    maxFiles: '200',
+    parametersSchema: '',
+    draftArgsTemplate: '',
+    status: 'ONLINE'
+  })
+
+  const loadSkills = useCallback(async (nextOnlineOnly = onlineOnly) => {
+    setSkillsLoading(true)
+    setSkillsError('')
+    try {
+      const data = await fetchAdminSkills(nextOnlineOnly)
+      setSkills(data)
+    } catch (e) {
+      setSkills([])
+      setSkillsError(e?.message || '加载失败')
+    } finally {
+      setSkillsLoading(false)
+    }
+  }, [onlineOnly])
+
+  const loadAudit = useCallback(async (nextLimit = auditLimit) => {
+    setAuditLoading(true)
+    setAuditError('')
+    try {
+      const data = await fetchSkillAudit(nextLimit)
+      setAuditRows(data)
+    } catch (e) {
+      setAuditRows([])
+      setAuditError(e?.message || '加载失败')
+    } finally {
+      setAuditLoading(false)
+    }
+  }, [auditLimit])
+
+  useEffect(() => {
+    loadSkills(onlineOnly)
+    loadAudit(auditLimit)
+  }, [onlineOnly, auditLimit, loadSkills, loadAudit])
+
+  const formatTime = (value) => {
+    if (!value) return '-'
+    const dt = new Date(value)
+    if (Number.isNaN(dt.getTime())) return String(value)
+    return dt.toLocaleString()
+  }
+
+  const handleOffline = async (toolCode) => {
+    if (!toolCode) return
+    const confirmed = window.confirm(`确认下线技能 ${toolCode} 吗？`)
+    if (!confirmed) return
+    setActionPending(prev => ({ ...prev, [`offline:${toolCode}`]: true }))
+    try {
+      await offlineSkill(toolCode)
+      await loadSkills(onlineOnly)
+    } catch (e) {
+      alert(e?.message || '下线失败')
+    } finally {
+      setActionPending(prev => ({ ...prev, [`offline:${toolCode}`]: false }))
+    }
+  }
+
+  const handleOnline = async (toolCode) => {
+    if (!toolCode) return
+    const confirmed = window.confirm(`确认上线技能 ${toolCode} 吗？`)
+    if (!confirmed) return
+    setActionPending(prev => ({ ...prev, [`online:${toolCode}`]: true }))
+    try {
+      await onlineSkill(toolCode)
+      await loadSkills(onlineOnly)
+    } catch (e) {
+      alert(e?.message || '上线失败')
+    } finally {
+      setActionPending(prev => ({ ...prev, [`online:${toolCode}`]: false }))
+    }
+  }
+
+  const handleDelete = async (toolCode) => {
+    if (!toolCode) return
+    const confirmed = window.confirm(`确认删除技能 ${toolCode} 吗？此操作不可恢复。`)
+    if (!confirmed) return
+    setActionPending(prev => ({ ...prev, [`delete:${toolCode}`]: true }))
+    try {
+      await deleteAdminSkill(toolCode)
+      await loadSkills(onlineOnly)
+    } catch (e) {
+      alert(e?.message || '删除失败')
+    } finally {
+      setActionPending(prev => ({ ...prev, [`delete:${toolCode}`]: false }))
+    }
+  }
+
+  const handleRegister = async (e) => {
+    e.preventDefault()
+    if (!registerForm.toolCode.trim()) {
+      alert('tool_code 不能为空')
+      return
+    }
+    if (!registerForm.toolName.trim()) {
+      alert('tool_name 不能为空')
+      return
+    }
+    if (!registerForm.invokeUrl.trim()) {
+      alert('invoke_url 不能为空')
+      return
+    }
+    setRegisterPending(true)
+    try {
+      await registerAdminSkill({
+        toolCode: registerForm.toolCode.trim(),
+        toolName: registerForm.toolName.trim(),
+        description: registerForm.description.trim(),
+        protocolType: registerForm.protocolType,
+        invokeUrl: registerForm.invokeUrl.trim(),
+        manifestUrl: registerForm.manifestUrl.trim(),
+        healthUrl: registerForm.healthUrl.trim(),
+        triggerKeywords: registerForm.triggerKeywords.trim(),
+        inputMode: registerForm.inputMode,
+        outputMode: registerForm.outputMode,
+        uploadRequired: Boolean(registerForm.uploadRequired),
+        acceptedFileTypes: registerForm.acceptedFileTypes.trim(),
+        maxFiles: Number(registerForm.maxFiles || 0),
+        parametersSchema: registerForm.parametersSchema.trim(),
+        draftArgsTemplate: registerForm.draftArgsTemplate.trim(),
+        status: registerForm.status
+      })
+      setRegisterForm(prev => ({
+        ...prev,
+        toolCode: '',
+        toolName: '',
+        description: '',
+        invokeUrl: '',
+        manifestUrl: '',
+        healthUrl: '',
+        triggerKeywords: '',
+        parametersSchema: '',
+        draftArgsTemplate: ''
+      }))
+      await loadSkills(onlineOnly)
+    } catch (e2) {
+      alert(e2?.message || '新增技能失败')
+    } finally {
+      setRegisterPending(false)
+    }
+  }
+
+  const handleSearchAudit = async () => {
+    await loadAudit(auditLimit)
+  }
+
+  return (
+    <div className="p-8 h-full overflow-y-auto">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">技能管理</h2>
+            <p className="text-sm text-slate-500 mt-1">管理员可新增、上线/下线、删除技能，并查询调用审计</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={onlineOnly}
+                onChange={(e) => setOnlineOnly(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              仅显示在线技能
+            </label>
+            <button
+              onClick={() => loadSkills(onlineOnly)}
+              disabled={skillsLoading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              <RefreshCw size={16} />
+              刷新技能
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleRegister} className="bg-white rounded-xl border shadow-sm p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <input value={registerForm.toolCode} onChange={(e) => setRegisterForm(prev => ({ ...prev, toolCode: e.target.value }))} placeholder="tool_code *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.toolName} onChange={(e) => setRegisterForm(prev => ({ ...prev, toolName: e.target.value }))} placeholder="tool_name *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.invokeUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, invokeUrl: e.target.value }))} placeholder="invoke_url *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.description} onChange={(e) => setRegisterForm(prev => ({ ...prev, description: e.target.value }))} placeholder="description" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.manifestUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, manifestUrl: e.target.value }))} placeholder="manifest_url" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.healthUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, healthUrl: e.target.value }))} placeholder="health_url" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.triggerKeywords} onChange={(e) => setRegisterForm(prev => ({ ...prev, triggerKeywords: e.target.value }))} placeholder="trigger_keywords(逗号分隔)" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={registerForm.acceptedFileTypes} onChange={(e) => setRegisterForm(prev => ({ ...prev, acceptedFileTypes: e.target.value }))} placeholder="accepted_file_types" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <select value={registerForm.protocolType} onChange={(e) => setRegisterForm(prev => ({ ...prev, protocolType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="HTTP">HTTP</option>
+            </select>
+            <select value={registerForm.inputMode} onChange={(e) => setRegisterForm(prev => ({ ...prev, inputMode: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="FILE_AND_PARAMS">FILE_AND_PARAMS</option>
+              <option value="PARAMS_ONLY">PARAMS_ONLY</option>
+            </select>
+            <select value={registerForm.outputMode} onChange={(e) => setRegisterForm(prev => ({ ...prev, outputMode: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="MIXED">MIXED</option>
+              <option value="TEXT">TEXT</option>
+              <option value="FILE">FILE</option>
+            </select>
+            <select value={registerForm.status} onChange={(e) => setRegisterForm(prev => ({ ...prev, status: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="ONLINE">ONLINE</option>
+              <option value="OFFLINE">OFFLINE</option>
+            </select>
+            <input type="number" min="1" value={registerForm.maxFiles} onChange={(e) => setRegisterForm(prev => ({ ...prev, maxFiles: e.target.value }))} placeholder="max_files" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600 px-3 py-2 border rounded-lg bg-slate-50">
+              <input type="checkbox" checked={registerForm.uploadRequired} onChange={(e) => setRegisterForm(prev => ({ ...prev, uploadRequired: e.target.checked }))} />
+              upload_required
+            </label>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+            <textarea value={registerForm.parametersSchema} onChange={(e) => setRegisterForm(prev => ({ ...prev, parametersSchema: e.target.value }))} placeholder="parameters_schema(JSON字符串)" rows={4} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea value={registerForm.draftArgsTemplate} onChange={(e) => setRegisterForm(prev => ({ ...prev, draftArgsTemplate: e.target.value }))} placeholder="draft_args_template(JSON字符串)" rows={4} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button type="submit" disabled={registerPending} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+              {registerPending ? '提交中...' : '新增/更新技能'}
+            </button>
+          </div>
+        </form>
+
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          {skillsError && (
+            <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
+              {skillsError}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr className="text-slate-600">
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_name</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">版本</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">更新时间</th>
+                  <th className="px-3 py-2 text-left font-semibold">描述</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {skillsLoading && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                      <div className="inline-flex items-center gap-2">
+                        <Loader2 className="animate-spin" size={16} />
+                        加载中...
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!skillsLoading && skills.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                      暂无技能
+                    </td>
+                  </tr>
+                )}
+                {!skillsLoading && skills.map((item) => (
+                  <tr key={item.tool_code || item.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{item.tool_code || '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-800">{item.tool_name || '-'}</td>
+                    <td className="px-3 py-2 align-top">
+                      <span className={cn(
+                        'px-2 py-0.5 rounded text-xs font-medium',
+                        String(item.status || '').toUpperCase() === 'ONLINE'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-200 text-slate-700'
+                      )}>
+                        {item.status || '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-slate-700">{item.version ?? '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-600 whitespace-nowrap">{formatTime(item.updated_at)}</td>
+                    <td className="px-3 py-2 align-top text-slate-700 min-w-[320px]">{item.description || '-'}</td>
+                    <td className="px-3 py-2 align-top">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOnline(item.tool_code)}
+                          disabled={String(item.status || '').toUpperCase() === 'ONLINE' || !!actionPending[`online:${item.tool_code}`]}
+                          className="px-3 py-1.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                        >
+                          {actionPending[`online:${item.tool_code}`] ? '处理中...' : '上线'}
+                        </button>
+                        <button
+                          onClick={() => handleOffline(item.tool_code)}
+                          disabled={String(item.status || '').toUpperCase() !== 'ONLINE' || !!actionPending[`offline:${item.tool_code}`]}
+                          className="px-3 py-1.5 rounded border border-amber-300 text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                        >
+                          {actionPending[`offline:${item.tool_code}`] ? '处理中...' : '下线'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.tool_code)}
+                          disabled={!!actionPending[`delete:${item.tool_code}`]}
+                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                        >
+                          {actionPending[`delete:${item.tool_code}`] ? '处理中...' : '删除'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">审计条数</label>
+            <input
+              type="number"
+              min="1"
+              max="500"
+              value={auditLimit}
+              onChange={(e) => setAuditLimit(e.target.value)}
+              className="w-28 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleSearchAudit}
+            disabled={auditLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <Search size={16} />
+            查询审计
+          </button>
+          <button
+            onClick={() => loadAudit(auditLimit)}
+            disabled={auditLoading}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw size={16} />
+            刷新
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          {auditError && (
+            <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
+              {auditError}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b">
+                <tr className="text-slate-600">
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">时间</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_call_id</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">耗时(ms)</th>
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">用户</th>
+                  <th className="px-3 py-2 text-left font-semibold">错误</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLoading && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                      <div className="inline-flex items-center gap-2">
+                        <Loader2 className="animate-spin" size={16} />
+                        加载中...
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!auditLoading && auditRows.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                      暂无审计记录
+                    </td>
+                  </tr>
+                )}
+                {!auditLoading && auditRows.map((row) => (
+                  <tr key={row.id || row.tool_call_id} className="border-b last:border-b-0 hover:bg-slate-50">
+                    <td className="px-3 py-2 align-top whitespace-nowrap text-slate-600">{formatTime(row.created_at)}</td>
+                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{row.tool_call_id || '-'}</td>
+                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{row.tool_code || '-'}</td>
+                    <td className="px-3 py-2 align-top">
+                      <span className={cn(
+                        'px-2 py-0.5 rounded text-xs font-medium',
+                        String(row.status || '').toUpperCase() === 'SUCCESS'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : String(row.status || '').toUpperCase() === 'FAILED'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                      )}>
+                        {row.status || '-'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-slate-700">{row.latency_ms ?? '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-700">{row.username || row.user_id || '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-600 min-w-[260px] break-all">{row.error_message || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SuperAdminOverview() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -2677,6 +3175,10 @@ function ChatInterface() {
   const [toolForms, setToolForms] = useState({})
   const [toolPending, setToolPending] = useState({})
   const [toolResults, setToolResults] = useState({})
+  const [toolCatalog, setToolCatalog] = useState([])
+  const [toolCatalogLoading, setToolCatalogLoading] = useState(false)
+  const [toolCatalogError, setToolCatalogError] = useState('')
+  const [manualDraftPending, setManualDraftPending] = useState('')
   const [planDrafts, setPlanDrafts] = useState({})
   const [planUiStates, setPlanUiStates] = useState({})
   const messagesEndRef = useRef(null)
@@ -2863,6 +3365,24 @@ function ChatInterface() {
   useEffect(() => {
     loadConversationListAndMessages()
   }, [loadConversationListAndMessages])
+
+  const loadToolCatalog = useCallback(async () => {
+    setToolCatalogLoading(true)
+    setToolCatalogError('')
+    try {
+      const list = await fetchToolCatalog()
+      setToolCatalog(list)
+    } catch (err) {
+      setToolCatalog([])
+      setToolCatalogError(err?.message || '加载技能目录失败')
+    } finally {
+      setToolCatalogLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadToolCatalog()
+  }, [loadToolCatalog])
 
   const parseJsonSafe = (text, fallback = null) => {
     try {
@@ -3371,6 +3891,55 @@ function ChatInterface() {
   const handleClarifySuggestionClick = (text) => {
     if (!text) return
     setInput(text)
+  }
+
+  const handleManualSkillInvoke = async (tool) => {
+    if (!tool?.name) return
+    if (loading) return
+    setConversationError('')
+    setManualDraftPending(tool.name)
+    try {
+      if (!conversationIdRef.current) {
+        await loadConversationListAndMessages()
+      }
+      if (!conversationIdRef.current) {
+        setConversationError('当前无可用会话，请先新建会话')
+        return
+      }
+      const conversationTitle = activeConversationTitle || String(tool?.displayName || tool.name).slice(0, 20)
+      const draft = await createToolDraft(
+        conversationIdRef.current,
+        tool.name,
+        tool.description || tool.displayName || tool.name
+      )
+      const draftArgs = parseJsonSafe(draft?.draftArgs, {}) || {}
+      if (draft?.toolCallId) {
+        setToolForms(prev => ({
+          ...prev,
+          [draft.toolCallId]: {
+            args: draftArgs,
+            files: []
+          }
+        }))
+      }
+      const assistantContent = `已选择技能：${tool.displayName || tool.name}\n请填写参数并上传文件后执行。`
+      const assistantMsg = {
+        role: 'assistant',
+        content: assistantContent,
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        toolDraft: draft
+      }
+      setMessages(prev => [...prev, assistantMsg])
+      const payloadText = buildMessagePayloadForSave({
+        content: assistantContent,
+        toolDraft: draft
+      })
+      await saveConversationMessage(conversationIdRef.current, 'assistant', assistantContent, conversationTitle, payloadText)
+    } catch (err) {
+      setConversationError(err?.message || '创建技能草稿失败')
+    } finally {
+      setManualDraftPending('')
+    }
   }
 
   const handleSend = async (presetInput) => {
@@ -3897,6 +4466,50 @@ function ChatInterface() {
               </div>
             )
           })}
+        </div>
+        <div className="border-t border-slate-100 p-2">
+          <div className="flex items-center justify-between px-1 mb-2">
+            <div className="text-xs font-semibold text-slate-600">技能快捷调用</div>
+            <button
+              onClick={loadToolCatalog}
+              disabled={toolCatalogLoading}
+              className="p-1 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              title="刷新技能目录"
+            >
+              <RefreshCw size={12} className={toolCatalogLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+          {toolCatalogError && (
+            <div className="px-2 py-1.5 text-[11px] text-rose-600 bg-rose-50 border border-rose-100 rounded mb-2">
+              {toolCatalogError}
+            </div>
+          )}
+          <div className="max-h-52 overflow-y-auto space-y-1">
+            {toolCatalogLoading && (
+              <div className="px-2 py-2 text-[11px] text-slate-400 flex items-center gap-1">
+                <Loader2 size={12} className="animate-spin" />
+                加载中...
+              </div>
+            )}
+            {!toolCatalogLoading && toolCatalog.length === 0 && (
+              <div className="px-2 py-2 text-[11px] text-slate-400">暂无可用技能</div>
+            )}
+            {!toolCatalogLoading && toolCatalog.map((tool) => (
+              <button
+                key={tool.name}
+                onClick={() => handleManualSkillInvoke(tool)}
+                disabled={loading || manualDraftPending === tool.name}
+                className="w-full text-left px-2 py-1.5 rounded border border-slate-200 hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50"
+              >
+                <div className="text-xs font-medium text-slate-700 truncate">
+                  {tool.displayName || tool.name}
+                </div>
+                <div className="text-[10px] text-slate-500 truncate">
+                  {manualDraftPending === tool.name ? '创建草稿中...' : (tool.description || tool.name)}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -4453,6 +5066,7 @@ function App() {
         {activeTab === 'super_overview' && isSuperAdminRole(role) && <SuperAdminOverview />}
         {activeTab === 'datasets' && isAdminLikeRole(role) && <DatasetManager />}
         {activeTab === 'permissions' && isAdminLikeRole(role) && <PermissionManager />}
+        {activeTab === 'skills' && isAdminLikeRole(role) && <SkillManager />}
         {activeTab === 'route_samples' && isSuperAdminRole(role) && <RouteSampleManager />}
       </main>
     </div>

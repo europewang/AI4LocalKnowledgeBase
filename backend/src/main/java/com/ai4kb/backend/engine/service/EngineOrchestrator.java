@@ -1617,6 +1617,24 @@ public class EngineOrchestrator {
         );
     }
 
+    public ToolCallDraft createManualToolDraft(String conversationId, Long userId, String toolCode, String query) {
+        if (conversationId == null || conversationId.isBlank()) {
+            throw new IllegalArgumentException("conversationId 不能为空");
+        }
+        if (toolCode == null || toolCode.isBlank()) {
+            throw new IllegalArgumentException("toolCode 不能为空");
+        }
+        ToolSpec spec = skillRegistryService.findAvailableToolByCode(userId, toolCode.trim())
+                .orElseThrow(() -> new IllegalArgumentException("技能不存在或当前用户无权限: " + toolCode));
+        ConversationState state = ensureConversationState(conversationId, userId);
+        String normalizedQuery = query == null ? "" : query.trim();
+        try {
+            return createAndSaveDraft(state, spec, normalizedQuery);
+        } catch (Exception e) {
+            throw new IllegalStateException("创建技能草稿失败: " + e.getMessage(), e);
+        }
+    }
+
     private RaceCandidate chooseRaceWinner(String route, RaceCandidate rag, RaceCandidate llm) {
         if (rag == null) {
             rag = RaceCandidate.empty("RAG");
@@ -2432,36 +2450,68 @@ public class EngineOrchestrator {
         }
     }
 
-    private Flux<ServerSentEvent<String>> buildToolDraftEvent(ConversationState state, ToolSpec spec, String query) {
+    private ConversationState ensureConversationState(String conversationId, Long userId) {
+        ConversationState state = conversationService.getState(conversationId);
+        if (state == null) {
+            state = ConversationState.builder()
+                    .conversationId(conversationId)
+                    .userId(userId)
+                    .memoryWindow(new ArrayList<>())
+                    .taskMemory(new ArrayList<>())
+                    .conversationMemory(new ArrayList<>())
+                    .status("RUNNING")
+                    .build();
+        }
+        if (state.getMemoryWindow() == null) {
+            state.setMemoryWindow(new ArrayList<>());
+        }
+        if (state.getTaskMemory() == null) {
+            state.setTaskMemory(new ArrayList<>());
+        }
+        if (state.getConversationMemory() == null) {
+            state.setConversationMemory(new ArrayList<>());
+        }
+        if (state.getUserId() == null) {
+            state.setUserId(userId);
+        }
+        return state;
+    }
+
+    private ToolCallDraft createAndSaveDraft(ConversationState state, ToolSpec spec, String query) throws Exception {
         String tcId = "tc-" + UUID.randomUUID();
+        Map<String, Object> payload = skillRegistryService.buildDraftPayload(spec, query);
+        String argsJson = objectMapper.writeValueAsString(payload.getOrDefault("draft_args", Map.of()));
+        Message.ToolCall mc = Message.ToolCall.builder()
+                .id(tcId)
+                .type("function")
+                .function(Message.Function.builder()
+                        .name(spec.getName())
+                        .arguments(argsJson)
+                        .build())
+                .build();
+        Message asstMsg = Message.builder()
+                .role("assistant")
+                .toolCalls(List.of(mc))
+                .build();
+        state.getMemoryWindow().add(asstMsg);
+        state.setStatus("WAITING_APPROVAL");
+        state.setPendingToolCallId(tcId);
+        ToolCallDraft draft = ToolCallDraft.builder()
+                .toolCallId(tcId)
+                .toolName(spec.getName())
+                .draftArgs(argsJson)
+                .toolSpec(payload)
+                .approvalStatus("PENDING")
+                .createdAt(LocalDateTime.now().toString())
+                .build();
+        conversationService.saveDraft(draft);
+        conversationService.saveState(state);
+        return draft;
+    }
+
+    private Flux<ServerSentEvent<String>> buildToolDraftEvent(ConversationState state, ToolSpec spec, String query) {
         try {
-            Map<String, Object> payload = skillRegistryService.buildDraftPayload(spec, query);
-            String argsJson = objectMapper.writeValueAsString(payload.getOrDefault("draft_args", Map.of()));
-            Message.ToolCall mc = Message.ToolCall.builder()
-                    .id(tcId)
-                    .type("function")
-                    .function(Message.Function.builder()
-                            .name(spec.getName())
-                            .arguments(argsJson)
-                            .build())
-                    .build();
-            Message asstMsg = Message.builder()
-                    .role("assistant")
-                    .toolCalls(List.of(mc))
-                    .build();
-            state.getMemoryWindow().add(asstMsg);
-            state.setStatus("WAITING_APPROVAL");
-            state.setPendingToolCallId(tcId);
-            ToolCallDraft draft = ToolCallDraft.builder()
-                    .toolCallId(tcId)
-                    .toolName(spec.getName())
-                    .draftArgs(argsJson)
-                    .toolSpec(payload)
-                    .approvalStatus("PENDING")
-                    .createdAt(LocalDateTime.now().toString())
-                    .build();
-            conversationService.saveDraft(draft);
-            conversationService.saveState(state);
+            ToolCallDraft draft = createAndSaveDraft(state, spec, query);
             String draftJson = objectMapper.writeValueAsString(draft);
             return Flux.just(
                     ServerSentEvent.<String>builder().event("tool_draft").data(draftJson).build(),

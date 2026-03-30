@@ -2,6 +2,7 @@ package com.ai4kb.backend.engine.controller;
 
 import com.ai4kb.backend.user.auth.AuthContextHolder;
 import com.ai4kb.backend.user.auth.AuthenticatedUser;
+import com.ai4kb.backend.engine.model.ToolCallDraft;
 import com.ai4kb.backend.engine.service.EngineOrchestrator;
 import com.ai4kb.backend.skill.model.ToolSpec;
 import com.ai4kb.backend.skill.service.SkillRegistryService;
@@ -63,6 +64,38 @@ class AgentControllerAuthContextTest {
         Assertions.assertNotNull(events);
         Assertions.assertEquals(1, events.size());
         Assertions.assertEquals("ok", events.get(0).data());
+        AuthContextHolder.clear();
+    }
+
+    @Test
+    void createToolDraft_shouldUseAuthenticatedUserId() {
+        EngineOrchestrator engineOrchestrator = Mockito.mock(EngineOrchestrator.class);
+        ToolFileStorageService toolFileStorageService = Mockito.mock(ToolFileStorageService.class);
+        SkillRegistryService skillRegistryService = Mockito.mock(SkillRegistryService.class);
+        AgentController controller = new AgentController(engineOrchestrator, toolFileStorageService, skillRegistryService);
+        AuthContextHolder.set(AuthenticatedUser.builder().userId(88L).username("u88").role("user").build());
+        ToolCallDraft draft = ToolCallDraft.builder()
+                .toolCallId("tc-1")
+                .toolName("cad_text_extractor_indicator_verification")
+                .draftArgs("{\"query\":\"指标校核\"}")
+                .approvalStatus("PENDING")
+                .build();
+        Mockito.when(engineOrchestrator.createManualToolDraft(
+                Mockito.eq("conv-2"),
+                Mockito.eq(88L),
+                Mockito.eq("cad_text_extractor_indicator_verification"),
+                Mockito.eq("指标校核")
+        )).thenReturn(draft);
+        AgentController.ToolDraftRequest request = new AgentController.ToolDraftRequest();
+        request.setConversationId("conv-2");
+        request.setToolCode("cad_text_extractor_indicator_verification");
+        request.setQuery("指标校核");
+
+        ToolCallDraft result = controller.createToolDraft(request);
+
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals("tc-1", result.getToolCallId());
+        Assertions.assertEquals("cad_text_extractor_indicator_verification", result.getToolName());
         AuthContextHolder.clear();
     }
 }

@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.ai4kb.backend.engine.service.EngineOrchestratorToolDraftTest
 -------------------------------------------------------------------------------
-Tests run: 39, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.384 s -- in com.ai4kb.backend.engine.service.EngineOrchestratorToolDraftTest
+Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.457 s -- in com.ai4kb.backend.engine.service.EngineOrchestratorToolDraftTest

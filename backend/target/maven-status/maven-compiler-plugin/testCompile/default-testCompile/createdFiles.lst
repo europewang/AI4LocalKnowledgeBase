@@ -1,3 +1,4 @@
+com/ai4kb/backend/engine/service/EngineOrchestratorToolDraftTest.class
 com/ai4kb/backend/engine/service/RouteSampleServiceTest.class
 com/ai4kb/backend/user/auth/AuthInterceptorTest.class
 com/ai4kb/backend/user/service/AuthServiceTest.class

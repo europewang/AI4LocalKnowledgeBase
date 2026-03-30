@@ -26,13 +26,6 @@ def register_custom_model():
           "quantization": "4-bit",
           "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
           "model_uri": "file:///models/deepseek-r1-distill-qwen-14b"
-        },
-        {
-          "model_format": "pytorch",
-          "model_size_in_billions": 14,
-          "quantization": "none",
-          "model_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-          "model_uri": "file:///models/deepseek-r1-distill-qwen-14b"
         }
       ],
       "prompt_style": {

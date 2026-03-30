@@ -2,6 +2,7 @@ package com.ai4kb.backend.engine.controller;
 
 import com.ai4kb.backend.user.auth.AuthContextHolder;
 import com.ai4kb.backend.user.auth.AuthenticatedUser;
+import com.ai4kb.backend.engine.model.ToolCallDraft;
 import com.ai4kb.backend.engine.service.EngineOrchestrator;
 import com.ai4kb.backend.skill.model.SkillFileRecord;
 import com.ai4kb.backend.skill.model.ToolSpec;
@@ -75,6 +76,17 @@ public class AgentController {
     @GetMapping("/tool/catalog")
     public List<ToolSpec> getToolCatalog() {
         return skillRegistryService.getAvailableTools(requireCurrentUser().getUserId());
+    }
+
+    @PostMapping("/tool/draft")
+    public ToolCallDraft createToolDraft(@RequestBody ToolDraftRequest request) {
+        AuthenticatedUser current = requireCurrentUser();
+        return engineOrchestrator.createManualToolDraft(
+                request.getConversationId(),
+                current.getUserId(),
+                request.getToolCode(),
+                request.getQuery()
+        );
     }
 
     /**
@@ -159,6 +171,13 @@ public class AgentController {
         private String conversationId;
         private String toolCallId;
         private String reviewedArgs;
+    }
+
+    @Data
+    public static class ToolDraftRequest {
+        private String conversationId;
+        private String toolCode;
+        private String query;
     }
 
     /**

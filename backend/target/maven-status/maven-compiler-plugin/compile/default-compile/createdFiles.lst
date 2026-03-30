@@ -80,6 +80,7 @@ com/ai4kb/backend/user/auth/JwtTokenService.class
 com/ai4kb/backend/engine/entity/ToolResult.class
 com/ai4kb/backend/engine/entity/Memory.class
 com/ai4kb/backend/engine/controller/AgentController$ToolApproveRequest.class
+com/ai4kb/backend/skill/service/DynamicSkillProtocolClient$1.class
 com/ai4kb/backend/engine/model/openai/OpenAiChatRequest$Function.class
 com/ai4kb/backend/user/auth/AuthContextHolder.class
 com/ai4kb/backend/engine/controller/AgentController$ChatRequest.class
