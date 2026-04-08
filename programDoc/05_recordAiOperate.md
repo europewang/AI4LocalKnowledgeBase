@@ -4292,3 +4292,26 @@ curl -sS -H "Content-Type: application/json" http://127.0.0.1:8085/v1/rerank \
 **结果**
 - Docker 前后端服务已正常运行；
 - 用户名筛选与用户名展示相关接口验证通过。
+
+## 2026-04-08: `.gitignore` 忽略规则补全
+
+**操作人**: AI Assistant (Trae IDE)
+
+**需求**
+- 用户反馈根目录 `.gitignore` 仅有 `models/`，忽略项不足，容易把构建产物/临时文件误提交。
+
+**本次补充内容**
+1. 系统与 IDE：
+   - `.DS_Store`、`Thumbs.db`、`.idea/`、`.vscode/`、`*.iml`
+2. 日志与临时文件：
+   - `*.log`、`logs/`、`tmp/`、`temp/`、`*.tmp`
+3. 环境与本地配置：
+   - `.env`、`.env.*`、`*.local`，并保留 `!.env.example`
+4. Python 缓存与虚拟环境：
+   - `__pycache__/`、`*.py[cod]`、`.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`、`.venv/`、`venv/`
+5. 前后端构建产物：
+   - `backend/target/`
+   - `frontend/node_modules/`、`frontend/dist/`、`frontend/.vite/`、`frontend/.cache/`
+
+**结果**
+- `.gitignore` 从单条规则扩展为覆盖当前项目主要技术栈（Java + Node + Python + IDE）的常用忽略集合，降低误提交风险。
