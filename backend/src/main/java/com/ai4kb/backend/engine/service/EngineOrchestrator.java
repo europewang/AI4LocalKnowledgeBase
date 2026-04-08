@@ -526,6 +526,10 @@ public class EngineOrchestrator {
         if (matchedTool.isPresent() && isExplicitToolExecutionIntent(normalizedQuery)) {
             return Optional.of(new RouteDecision("TOOL", 0.96d, matchedTool.get().getName(), "local_explicit_tool_intent"));
         }
+        // 命中 @技能/技能关键词时，提升到“技能相关意图”优先，后续由执行分支再判定“执行 or 说明”。
+        if (matchedTool.isPresent() && shouldPreferSkillExplanation(normalizedQuery)) {
+            return Optional.of(new RouteDecision("TOOL", 0.93d, matchedTool.get().getName(), "local_skill_mention_bias"));
+        }
         if (looksLikeKnowledgeQuestion(normalizedQuery) && !isExplicitToolExecutionIntent(normalizedQuery)) {
             return Optional.of(new RouteDecision("RAG", 0.82d, null, "local_knowledge_question"));
         }
@@ -580,6 +584,31 @@ public class EngineOrchestrator {
         Pattern usagePattern = Pattern.compile("(怎么用|如何用|使用方法|参数|触发词|示例)");
         Pattern toolPattern = Pattern.compile("(工具|技能|校核|核验|检查|提取|导出)");
         return usagePattern.matcher(normalized).find() && toolPattern.matcher(normalized).find();
+    }
+
+    private boolean hasSkillMentionSignal(String query) {
+        String normalized = query == null ? "" : query.trim();
+        if (normalized.isBlank()) {
+            return false;
+        }
+        // @xxx 作为技能标识信号；同时兼容“技能/工具”等自然表达。
+        Pattern mentionPattern = Pattern.compile("@[^\\s@]+");
+        Pattern toolContextPattern = Pattern.compile("(技能|工具)");
+        return mentionPattern.matcher(normalized).find() || toolContextPattern.matcher(normalized).find();
+    }
+
+    private boolean isSkillIntroIntent(String query) {
+        String normalized = query == null ? "" : query.trim();
+        if (normalized.isBlank()) {
+            return false;
+        }
+        Pattern introPattern = Pattern.compile("(什么是|是什么|简介|介绍|作用|用途|能做什么|适用场景)");
+        return introPattern.matcher(normalized).find() && hasSkillMentionSignal(normalized);
+    }
+
+    private boolean shouldPreferSkillExplanation(String query) {
+        return !isExplicitToolExecutionIntent(query)
+                && (isSkillUsageIntent(query) || isSkillIntroIntent(query) || hasSkillMentionSignal(query));
     }
 
     private void logRouteSample(String conversationId, Long userId, String query, DecisionEnvelope envelope) {
@@ -644,7 +673,13 @@ public class EngineOrchestrator {
             return skillRegistryService.getAvailableTools(state.getUserId()).stream()
                     .filter(spec -> decision.toolName().equals(spec.getName()))
                     .findFirst()
-                    .map(spec -> buildToolDraftEvent(state, spec, query))
+                    .map(spec -> {
+                        // 技能相关意图优先：非显式执行时，先给“使用/简介”，避免误触发直接执行。
+                        if (shouldPreferSkillExplanation(query)) {
+                            return buildSkillUsageMessageEvent(state, spec, query);
+                        }
+                        return buildToolDraftEvent(state, spec, query);
+                    })
                     .orElseGet(() -> {
                         log.info("route_decision fallback: reason=tool_not_permitted tool={} query={}", decision.toolName(), query);
                         return fallbackRoute(state, query);
@@ -670,6 +705,10 @@ public class EngineOrchestrator {
         if (matched.isPresent() && isExplicitToolExecutionIntent(query)) {
             log.info("route_decision fallback_hit: path=explicit_tool tool={} query={}", matched.get().getName(), query);
             return buildToolDraftEvent(state, matched.get(), query);
+        }
+        if (matched.isPresent() && shouldPreferSkillExplanation(query)) {
+            log.info("route_decision fallback_hit: path=skill_intro_usage tool={} query={}", matched.get().getName(), query);
+            return buildSkillUsageMessageEvent(state, matched.get(), query);
         }
         if (isIndicatorKnowledgeQuestion(query) && !isExplicitToolExecutionIntent(query)) {
             return executeRagWithFallback(state, query);
@@ -717,7 +756,7 @@ public class EngineOrchestrator {
         List<Message> messages = List.of(
                 Message.builder()
                         .role("system")
-                        .content("你是路由规划器。请严格调用 route_decision 工具并返回决策：TOOL 仅用于明确需要执行工具的请求；RAG 用于知识库事实问答；CHAT 用于寒暄/通用对话。tool_name 必须来自可用工具清单。")
+                        .content("你是路由规划器。请严格调用 route_decision 工具并返回决策：TOOL 仅用于明确需要执行工具的请求；RAG 用于知识库事实问答；CHAT 用于寒暄/通用对话。tool_name 必须来自可用工具清单。若用户问题中出现@技能名或明显技能指代，应优先按“技能相关意图”理解；但当用户未明确要求执行时，不要激进判定为立即执行。")
                         .build(),
                 Message.builder()
                         .role("user")
@@ -751,7 +790,6 @@ public class EngineOrchestrator {
             appendLogicStep(logicSteps, "查询RAG知识库");
         }
         AtomicBoolean hasNonFailureAnswer = new AtomicBoolean(false);
-        AtomicBoolean skillHintInjected = new AtomicBoolean(skillKnowledgeHint.isBlank());
         AtomicReference<JsonNode> retainedReference = new AtomicReference<>(null);
         AtomicBoolean referencePayloadSent = new AtomicBoolean(false);
         AtomicBoolean ragHitMarked = new AtomicBoolean(false);
@@ -796,10 +834,6 @@ public class EngineOrchestrator {
                         if (indicatorKnowledgeQuery && ragHitMarked.compareAndSet(false, true)) {
                             appendLogicStep(logicSteps, "RAG命中相关内容，基于知识库回答");
                         }
-                        if (!skillHintInjected.get()) {
-                            answer = mergeSkillHint(skillKnowledgeHint, answer);
-                            skillHintInjected.set(true);
-                        }
                         hasNonFailureAnswer.set(true);
                         ragReply.append(answer);
                         return Mono.just(ServerSentEvent.<String>builder()
@@ -808,7 +842,8 @@ public class EngineOrchestrator {
                                         overridePayloadAnswer(node, answer),
                                         "RAG",
                                         "RAG检索",
-                                        indicatorKnowledgeQuery ? buildLogicFlow(logicSteps) : null
+                                        indicatorKnowledgeQuery ? buildLogicFlow(logicSteps) : null,
+                                        skillKnowledgeHint
                                 ))
                                 .build());
                     } catch (Exception ignored) {
@@ -816,10 +851,6 @@ public class EngineOrchestrator {
                             return Mono.empty();
                         }
                         String answer = payload;
-                        if (!skillHintInjected.get()) {
-                            answer = mergeSkillHint(skillKnowledgeHint, answer);
-                            skillHintInjected.set(true);
-                        }
                         String wrapped = wrapPlainRagPayload(answer);
                         if (wrapped == null) {
                             return Mono.empty();
@@ -835,7 +866,8 @@ public class EngineOrchestrator {
                                         wrapped,
                                         "RAG",
                                         "RAG检索",
-                                        indicatorKnowledgeQuery ? buildLogicFlow(logicSteps) : null
+                                        indicatorKnowledgeQuery ? buildLogicFlow(logicSteps) : null,
+                                        skillKnowledgeHint
                                 ))
                                 .build());
                     }
@@ -903,9 +935,9 @@ public class EngineOrchestrator {
 
     private Flux<ServerSentEvent<String>> executeRagReferenceGroundedAnswer(ConversationState state, String query, JsonNode referenceNode, String skillKnowledgeHint, String logicFlow) {
         String referenceContext = buildReferenceContext(referenceNode);
-        String fallbackAnswer = mergeSkillHint(skillKnowledgeHint, buildReferenceOnlyFallback(query));
+        String fallbackAnswer = buildReferenceOnlyFallback(query);
         if (referenceContext.isBlank()) {
-            String payload = annotatePayload(buildRagPayload(fallbackAnswer, referenceNode), "RAG", "RAG检索", logicFlow);
+            String payload = annotatePayload(buildRagPayload(fallbackAnswer, referenceNode), "RAG", "RAG检索", logicFlow, skillKnowledgeHint);
             state.getMemoryWindow().add(Message.builder()
                     .role("assistant")
                     .content(fallbackAnswer)
@@ -949,10 +981,8 @@ public class EngineOrchestrator {
                     String answer = modelReply.toString().trim();
                     if (answer.isBlank()) {
                         answer = fallbackAnswer;
-                    } else {
-                        answer = mergeSkillHint(skillKnowledgeHint, answer);
                     }
-                    String payload = annotatePayload(buildRagPayload(answer, referenceNode), "RAG", "RAG检索", logicFlow);
+                    String payload = annotatePayload(buildRagPayload(answer, referenceNode), "RAG", "RAG检索", logicFlow, skillKnowledgeHint);
                     state.getMemoryWindow().add(Message.builder()
                             .role("assistant")
                             .content(answer)
@@ -965,7 +995,7 @@ public class EngineOrchestrator {
                     );
                 }))
                 .onErrorResume(ex -> {
-                    String payload = annotatePayload(buildRagPayload(fallbackAnswer, referenceNode), "RAG", "RAG检索", logicFlow);
+                    String payload = annotatePayload(buildRagPayload(fallbackAnswer, referenceNode), "RAG", "RAG检索", logicFlow, skillKnowledgeHint);
                     state.getMemoryWindow().add(Message.builder()
                             .role("assistant")
                             .content(fallbackAnswer)
@@ -1055,6 +1085,10 @@ public class EngineOrchestrator {
     }
 
     private String buildStructuredPayload(String answer, JsonNode referenceNode, String source, String sourceLabel, String logicFlow) {
+        return buildStructuredPayload(answer, referenceNode, source, sourceLabel, logicFlow, null);
+    }
+
+    private String buildStructuredPayload(String answer, JsonNode referenceNode, String source, String sourceLabel, String logicFlow, String skillHint) {
         try {
             ObjectNode payload = objectMapper.createObjectNode();
             payload.put("answer", answer == null ? "" : answer);
@@ -1073,6 +1107,11 @@ public class EngineOrchestrator {
             if (logicFlow != null && !logicFlow.isBlank()) {
                 payload.put("logicFlow", logicFlow);
             }
+            String normalizedSkillHint = skillHint == null ? "" : skillHint.trim();
+            if (!normalizedSkillHint.isBlank()) {
+                // 相关技能提示独立下发，避免和回答正文混排。
+                payload.put("skillHint", normalizedSkillHint);
+            }
             return objectMapper.writeValueAsString(payload);
         } catch (Exception e) {
             return answer == null ? "" : answer;
@@ -1084,6 +1123,10 @@ public class EngineOrchestrator {
     }
 
     private String annotatePayload(String payload, String source, String sourceLabel, String logicFlow) {
+        return annotatePayload(payload, source, sourceLabel, logicFlow, null);
+    }
+
+    private String annotatePayload(String payload, String source, String sourceLabel, String logicFlow, String skillHint) {
         if (payload == null || payload.isBlank()) {
             return payload;
         }
@@ -1106,6 +1149,11 @@ public class EngineOrchestrator {
             if (logicFlow != null && !logicFlow.isBlank()) {
                 objectNode.put("logicFlow", logicFlow);
             }
+            String normalizedSkillHint = skillHint == null ? "" : skillHint.trim();
+            if (!normalizedSkillHint.isBlank()) {
+                // 对已有 payload 追加技能提示元信息，前端可独立展示。
+                objectNode.put("skillHint", normalizedSkillHint);
+            }
             return objectMapper.writeValueAsString(objectNode);
         } catch (Exception ignored) {
             return payload;
@@ -1113,7 +1161,6 @@ public class EngineOrchestrator {
     }
 
     private Flux<ServerSentEvent<String>> executeGeneralKnowledgeAnswerAfterRagMiss(ConversationState state, String query, String skillKnowledgeHint, String logicFlow) {
-        String skillPrefix = skillKnowledgeHint == null || skillKnowledgeHint.isBlank() ? "" : skillKnowledgeHint + "\n";
         String ragMissNotice = buildRagUnavailableFallback(query);
         String modelUnavailableFallback = buildModelUnavailableFallback(query);
         StringBuilder modelReply = new StringBuilder();
@@ -1128,13 +1175,14 @@ public class EngineOrchestrator {
                         .build()
         );
         Flux<ServerSentEvent<String>> prelude = Flux.empty();
-        if (logicFlow != null && !logicFlow.isBlank()) {
-            String payload = buildStructuredPayload("", null, "LLM", "大模型回答", logicFlow);
+        if ((logicFlow != null && !logicFlow.isBlank())
+                || (skillKnowledgeHint != null && !skillKnowledgeHint.isBlank())) {
+            String payload = buildStructuredPayload("", null, "LLM", "大模型回答", logicFlow, skillKnowledgeHint);
             prelude = Flux.just(ServerSentEvent.<String>builder().event("message").data(payload).build());
         }
         return Flux.concat(
                         prelude,
-                        Flux.just(ServerSentEvent.<String>builder().event("token").data(skillPrefix + ragMissNotice + "\n【模型知识】\n").build()),
+                        Flux.just(ServerSentEvent.<String>builder().event("token").data(ragMissNotice + "\n【模型知识】\n").build()),
                         llmClient.chatStream(OpenAiChatRequest.builder().messages(messages).build())
                                 .mapNotNull(response -> {
                                     if (response.getChoices() == null || response.getChoices().isEmpty()) {
@@ -1172,7 +1220,7 @@ public class EngineOrchestrator {
                     }
                     state.getMemoryWindow().add(Message.builder()
                             .role("assistant")
-                            .content(skillPrefix + ragMissNotice + "\n【模型知识】\n" + finalBody)
+                            .content(ragMissNotice + "\n【模型知识】\n" + finalBody)
                             .build());
                     state.setStatus("FINISHED");
                     conversationService.saveState(state);
@@ -1224,21 +1272,6 @@ public class EngineOrchestrator {
             builder.append("（可用触发词：").append(aliasText).append("）");
         }
         return builder.toString();
-    }
-
-    private String mergeSkillHint(String skillKnowledgeHint, String answer) {
-        String hint = skillKnowledgeHint == null ? "" : skillKnowledgeHint.trim();
-        String body = answer == null ? "" : answer.trim();
-        if (hint.isBlank()) {
-            return body;
-        }
-        if (body.isBlank()) {
-            return hint;
-        }
-        if (body.contains(hint)) {
-            return body;
-        }
-        return hint + "\n" + body;
     }
 
     private boolean isIndicatorKnowledgeQuestion(String query) {
@@ -1394,7 +1427,8 @@ public class EngineOrchestrator {
             return primary;
         }
         if (secondary != null && !secondary.isBlank()) {
-            return secondary;
+            // reasoning_content 映射为 think 标签，确保前端可稳定识别“思考过程”。
+            return "<think>" + secondary + "</think>";
         }
         return null;
     }
@@ -1664,7 +1698,7 @@ public class EngineOrchestrator {
     }
 
     private Mono<RaceCandidate> collectRagRaceCandidate(String username, String query) {
-        AtomicBoolean hasReference = new AtomicBoolean(false);
+        AtomicReference<JsonNode> retainedReference = new AtomicReference<>(null);
         StringBuilder answer = new StringBuilder();
         return chatProcessor.process(username, query, true)
                 .map(this::normalizeSsePayload)
@@ -1681,8 +1715,8 @@ public class EngineOrchestrator {
                             answer.append(text);
                         }
                         JsonNode refs = node.path("reference");
-                        if (refs != null && refs.isArray() && refs.size() > 0) {
-                            hasReference.set(true);
+                        if (hasRenderableReference(refs)) {
+                            retainedReference.set(refs.deepCopy());
                         }
                         return Mono.just(node);
                     } catch (Exception ignored) {
@@ -1695,7 +1729,7 @@ public class EngineOrchestrator {
                         return Mono.empty();
                     }
                 })
-                .then(Mono.fromSupplier(() -> RaceCandidate.of("RAG", answer.toString(), hasReference.get())));
+                .then(Mono.fromSupplier(() -> RaceCandidate.of("RAG", answer.toString(), retainedReference.get())));
     }
 
     private Mono<RaceCandidate> collectLlmRaceCandidate(ConversationState state) {
@@ -1717,7 +1751,7 @@ public class EngineOrchestrator {
                     return null;
                 })
                 .doOnNext(answer::append)
-                .then(Mono.fromSupplier(() -> RaceCandidate.of("CHAT", answer.toString(), false)));
+                .then(Mono.fromSupplier(() -> RaceCandidate.of("CHAT", answer.toString(), null)));
     }
 
     private Flux<ServerSentEvent<String>> buildClarifyEvent(ConversationState state, String query, RouteDecision decision, String normalizedRoute) {
@@ -2543,14 +2577,14 @@ public class EngineOrchestrator {
         }
     }
 
-    private record RaceCandidate(String source, String answer, boolean hasReference) {
+    private record RaceCandidate(String source, String answer, JsonNode reference) {
         private static RaceCandidate empty(String source) {
-            return new RaceCandidate(source, "", false);
+            return new RaceCandidate(source, "", null);
         }
 
-        private static RaceCandidate of(String source, String answer, boolean hasReference) {
+        private static RaceCandidate of(String source, String answer, JsonNode reference) {
             String normalizedAnswer = answer == null ? "" : answer.trim();
-            return new RaceCandidate(source, normalizedAnswer, hasReference);
+            return new RaceCandidate(source, normalizedAnswer, reference);
         }
 
         private boolean hasAnswer() {
@@ -2566,18 +2600,29 @@ public class EngineOrchestrator {
             if (len >= 20 && len <= 600) {
                 score += 1;
             }
-            if ("RAG".equals(source) && hasReference) {
+            if ("RAG".equals(source) && hasRenderableReference()) {
                 score += 2;
             }
             return score;
+        }
+
+        private boolean hasRenderableReference() {
+            if (reference == null || reference.isNull() || reference.isMissingNode()) {
+                return false;
+            }
+            if (reference.isArray()) {
+                return reference.size() > 0;
+            }
+            JsonNode chunks = reference.path("chunks");
+            return chunks.isArray() && chunks.size() > 0;
         }
 
         private String toRagPayloadJson(ObjectMapper mapper) {
             try {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("answer", answer);
-                if (hasReference) {
-                    payload.put("reference", List.of(Map.of("document_name", "竞速检索结果", "content", answer, "similarity", 1.0)));
+                if (hasRenderableReference()) {
+                    payload.put("reference", reference);
                 } else {
                     payload.put("reference", null);
                 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings, Download, Plus } from 'lucide-react'
+import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronDown, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings, Download, Plus } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
@@ -181,26 +181,48 @@ async function fetchUserPermissions(username) {
   return res.json()
 }
 
-async function fetchRouteSamples({ limit = 100, userId, source } = {}) {
+async function fetchRouteSamples({ page = 1, pageSize = 20, username, source, chosenRoute, startTime, endTime, queryKeyword } = {}) {
   const params = new URLSearchParams()
-  params.set('limit', String(limit))
-  if (userId !== undefined && userId !== null && String(userId).trim()) {
-    params.set('userId', String(userId).trim())
+  params.set('page', String(Math.max(1, Number.parseInt(String(page), 10) || 1)))
+  params.set('pageSize', String(Math.max(1, Math.min(100, Number.parseInt(String(pageSize), 10) || 20))))
+  if (username && String(username).trim()) {
+    params.set('username', String(username).trim())
   }
   if (source && String(source).trim()) {
     params.set('source', String(source).trim())
   }
+  if (chosenRoute && String(chosenRoute).trim()) {
+    params.set('chosenRoute', String(chosenRoute).trim())
+  }
+  if (startTime && String(startTime).trim()) {
+    params.set('startTime', String(startTime).trim())
+  }
+  if (endTime && String(endTime).trim()) {
+    params.set('endTime', String(endTime).trim())
+  }
+  if (queryKeyword && String(queryKeyword).trim()) {
+    params.set('queryKeyword', String(queryKeyword).trim())
+  }
   const res = await apiFetch(`/admin/route-samples?${params.toString()}`)
   if (!res.ok) throw new Error('Failed to fetch route samples')
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total || 0),
+    page: Number(data?.page || 1),
+    pageSize: Number(data?.page_size || pageSize),
+    hasMore: Boolean(data?.has_more)
+  }
 }
 
 async function fetchRouteSampleSources() {
-  const res = await apiFetch('/admin/route-samples/sources')
-  if (!res.ok) throw new Error('Failed to fetch route sample sources')
+  const res = await apiFetch('/admin/route-samples/options')
+  if (!res.ok) throw new Error('Failed to fetch route sample options')
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  return {
+    sources: Array.isArray(data?.sources) ? data.sources : [],
+    routes: Array.isArray(data?.routes) ? data.routes : []
+  }
 }
 
 async function fetchSuperAdminOverview() {
@@ -243,13 +265,44 @@ async function onlineSkill(toolCode) {
   return res.json()
 }
 
-async function fetchSkillAudit(limit = 100) {
-  const n = Number.parseInt(String(limit), 10)
-  const safeLimit = Number.isNaN(n) ? 100 : Math.max(1, Math.min(n, 500))
-  const res = await apiFetch(`/admin/skills/audit?limit=${safeLimit}`)
+async function fetchSkillAudit({
+  page = 1,
+  pageSize = 20,
+  startTime,
+  endTime,
+  username,
+  status,
+  toolCode
+} = {}) {
+  const params = new URLSearchParams()
+  params.set('page', String(Math.max(1, Number.parseInt(String(page), 10) || 1)))
+  params.set('pageSize', String(Math.max(1, Math.min(100, Number.parseInt(String(pageSize), 10) || 20))))
+  if (startTime && String(startTime).trim()) params.set('startTime', String(startTime).trim())
+  if (endTime && String(endTime).trim()) params.set('endTime', String(endTime).trim())
+  if (username && String(username).trim()) params.set('username', String(username).trim())
+  if (status && String(status).trim()) params.set('status', String(status).trim())
+  if (toolCode && String(toolCode).trim()) params.set('toolCode', String(toolCode).trim())
+  const res = await apiFetch(`/admin/skills/audit?${params.toString()}`)
   if (!res.ok) throw new Error('加载技能审计失败')
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total || 0),
+    page: Number(data?.page || 1),
+    pageSize: Number(data?.page_size || pageSize),
+    hasMore: Boolean(data?.has_more)
+  }
+}
+
+async function fetchSkillAuditOptions() {
+  const res = await apiFetch('/admin/skills/audit/options')
+  if (!res.ok) throw new Error('加载技能审计筛选项失败')
+  const data = await res.json()
+  return {
+    statuses: Array.isArray(data?.statuses) ? data.statuses : [],
+    usernames: Array.isArray(data?.usernames) ? data.usernames : [],
+    toolCodes: Array.isArray(data?.tool_codes) ? data.tool_codes : []
+  }
 }
 
 async function offlineSkill(toolCode) {
@@ -287,11 +340,20 @@ async function createConversation(title = '') {
   return res.json()
 }
 
-async function fetchConversations() {
-  const res = await apiFetch('/user/conversations')
+async function fetchConversations({ page = 1, pageSize = 50 } = {}) {
+  const safePage = Math.max(1, Number.parseInt(String(page), 10) || 1)
+  const safePageSize = Math.max(1, Math.min(100, Number.parseInt(String(pageSize), 10) || 50))
+  const res = await apiFetch(`/user/conversations?page=${safePage}&pageSize=${safePageSize}`)
   if (!res.ok) throw new Error('加载会话列表失败')
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: Number(data?.total || 0),
+    page: Number(data?.page || safePage),
+    pageSize: Number(data?.page_size || safePageSize),
+    hasMore: Boolean(data?.has_more),
+    retentionDays: Number(data?.retention_days || 90)
+  }
 }
 
 async function renameConversation(conversationId, title) {
@@ -312,11 +374,21 @@ async function deleteConversation(conversationId) {
   return res.json()
 }
 
-async function fetchConversationMessages(conversationId) {
-  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}/messages`)
+async function fetchConversationMessages(conversationId, { beforeId, limit = 50 } = {}) {
+  const params = new URLSearchParams()
+  const safeLimit = Math.max(1, Math.min(100, Number.parseInt(String(limit), 10) || 50))
+  params.set('limit', String(safeLimit))
+  if (beforeId !== undefined && beforeId !== null && Number(beforeId) > 0) {
+    params.set('beforeId', String(beforeId))
+  }
+  const res = await apiFetch(`/user/conversations/${encodeURIComponent(conversationId)}/messages?${params.toString()}`)
   if (!res.ok) throw new Error('加载会话消息失败')
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    hasMore: Boolean(data?.has_more),
+    nextBeforeId: data?.next_before_id ?? null
+  }
 }
 
 async function saveConversationMessage(conversationId, role, content, conversationTitle = '', messagePayload = '') {
@@ -1921,52 +1993,84 @@ function PermissionManager() {
 function RouteSampleManager() {
   const [samples, setSamples] = useState([])
   const [sourceOptions, setSourceOptions] = useState([])
+  const [routeOptions, setRouteOptions] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [limit, setLimit] = useState('100')
-  const [userId, setUserId] = useState('')
-  const [source, setSource] = useState('')
+  const [filters, setFilters] = useState({
+    page: 1,
+    pageSize: 20,
+    username: '',
+    source: '',
+    chosenRoute: '',
+    startTime: '',
+    endTime: '',
+    queryKeyword: ''
+  })
+  const [total, setTotal] = useState(0)
 
-  const loadSamples = async (nextFilters) => {
+  // 路由样本查询统一入口：支持范围筛选 + 分页。
+  const loadSamples = async (nextFilters = filters) => {
     setLoading(true)
     setError('')
     try {
       const data = await fetchRouteSamples(nextFilters)
-      setSamples(data)
+      setSamples(Array.isArray(data?.items) ? data.items : [])
+      setTotal(Number(data?.total || 0))
     } catch (e) {
       setError(e.message || '加载失败')
       setSamples([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadSamples({ limit: 100 })
+    loadSamples(filters)
     fetchRouteSampleSources()
-      .then(data => setSourceOptions(data))
-      .catch(() => setSourceOptions([]))
+      .then(data => {
+        setSourceOptions(Array.isArray(data?.sources) ? data.sources : [])
+        setRouteOptions(Array.isArray(data?.routes) ? data.routes : [])
+      })
+      .catch(() => {
+        setSourceOptions([])
+        setRouteOptions([])
+      })
   }, [])
 
-  const normalizedLimit = () => {
-    const n = Number.parseInt(limit, 10)
-    if (Number.isNaN(n)) return 100
-    return Math.max(1, Math.min(n, 500))
-  }
-
   const handleSearch = () => {
-    loadSamples({
-      limit: normalizedLimit(),
-      userId: userId.trim() ? userId.trim() : undefined,
-      source: source.trim() ? source.trim() : undefined
-    })
+    const next = { ...filters, page: 1 }
+    setFilters(next)
+    loadSamples(next)
   }
 
   const handleReset = () => {
-    setLimit('100')
-    setUserId('')
-    setSource('')
-    loadSamples({ limit: 100 })
+    const next = {
+      page: 1,
+      pageSize: 20,
+      username: '',
+      source: '',
+      chosenRoute: '',
+      startTime: '',
+      endTime: '',
+      queryKeyword: ''
+    }
+    setFilters(next)
+    loadSamples(next)
+  }
+
+  const handlePageChange = (nextPage) => {
+    const safePage = Math.max(1, nextPage)
+    const next = { ...filters, page: safePage }
+    setFilters(next)
+    loadSamples(next)
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, Number(filters.pageSize) || 20)))
+  const pageNumbers = Array.from({ length: totalPages }, (_, idx) => idx + 1).slice(0, 200)
+
+  const setFilterField = (key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value }))
   }
 
   const formatTime = (value) => {
@@ -1980,7 +2084,7 @@ function RouteSampleManager() {
 
   const handleExportCsv = () => {
     const headers = [
-      'id', 'created_at', 'conversation_id', 'user_id', 'source',
+      'id', 'created_at', 'conversation_id', 'username', 'source',
       'chosen_route', 'chosen_confidence', 'chosen_tool',
       'local_route', 'local_confidence',
       'planner_route', 'planner_confidence', 'query_text'
@@ -1989,7 +2093,7 @@ function RouteSampleManager() {
       item.id,
       item.createdAt,
       item.conversationId,
-      item.userId,
+      item.username,
       item.source,
       item.chosenRoute,
       item.chosenConfidence,
@@ -2033,31 +2137,20 @@ function RouteSampleManager() {
 
         <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">条数</label>
-            <input
-              type="number"
-              min="1"
-              max="500"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              className="w-28 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">用户 ID</label>
+            <label className="block text-xs text-slate-500 mb-1">用户名</label>
             <input
               type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="如 1"
+              value={filters.username}
+              onChange={(e) => setFilterField('username', e.target.value)}
+              placeholder="如 superadmin"
               className="w-36 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">来源</label>
             <select
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
+              value={filters.source}
+              onChange={(e) => setFilterField('source', e.target.value)}
               className="w-48 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">全部来源</option>
@@ -2065,6 +2158,47 @@ function RouteSampleManager() {
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">最终路由</label>
+            <select
+              value={filters.chosenRoute}
+              onChange={(e) => setFilterField('chosenRoute', e.target.value)}
+              className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">全部路由</option>
+              {routeOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">开始时间</label>
+            <input
+              type="date"
+              value={filters.startTime}
+              onChange={(e) => setFilterField('startTime', e.target.value)}
+              className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">结束时间</label>
+            <input
+              type="date"
+              value={filters.endTime}
+              onChange={(e) => setFilterField('endTime', e.target.value)}
+              className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Query关键词</label>
+            <input
+              type="text"
+              value={filters.queryKeyword}
+              onChange={(e) => setFilterField('queryKeyword', e.target.value)}
+              placeholder="关键词模糊搜索"
+              className="w-48 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
           <button
             onClick={handleSearch}
@@ -2126,7 +2260,7 @@ function RouteSampleManager() {
                   <tr key={item.id || `${item.conversationId}-${item.createdAt}`} className="border-b last:border-b-0 hover:bg-slate-50">
                     <td className="px-3 py-2 align-top whitespace-nowrap text-slate-600">{formatTime(item.createdAt)}</td>
                     <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{item.conversationId || '-'}</td>
-                    <td className="px-3 py-2 align-top text-slate-700">{item.userId ?? '-'}</td>
+                    <td className="px-3 py-2 align-top text-slate-700">{item.username || '-'}</td>
                     <td className="px-3 py-2 align-top">
                       <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium">
                         {item.source || '-'}
@@ -2151,41 +2285,265 @@ function RouteSampleManager() {
               </tbody>
             </table>
           </div>
+          <div className="px-4 py-3 border-t bg-slate-50 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <span>共 {total} 条</span>
+            <span>第 {filters.page} / {totalPages} 页</span>
+            <button
+              onClick={() => handlePageChange(filters.page - 1)}
+              disabled={loading || filters.page <= 1}
+              className="px-2 py-1 border rounded hover:bg-white disabled:opacity-50"
+            >
+              上一页
+            </button>
+            <button
+              onClick={() => handlePageChange(filters.page + 1)}
+              disabled={loading || filters.page >= totalPages}
+              className="px-2 py-1 border rounded hover:bg-white disabled:opacity-50"
+            >
+              下一页
+            </button>
+            <select
+              value={String(filters.page)}
+              onChange={(e) => handlePageChange(Number(e.target.value))}
+              className="px-2 py-1 border rounded bg-white"
+            >
+              {pageNumbers.map(pageNo => (
+                <option key={pageNo} value={pageNo}>{pageNo}</option>
+              ))}
+            </select>
+            <div className="ml-auto inline-flex items-center gap-2">
+              <span>每页</span>
+              <select
+                value={String(filters.pageSize)}
+                onChange={(e) => {
+                  const next = { ...filters, pageSize: Number(e.target.value), page: 1 }
+                  setFilters(next)
+                  loadSamples(next)
+                }}
+                className="px-2 py-1 border rounded bg-white"
+              >
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+const DEFAULT_SKILL_FORM = {
+  toolCode: '',
+  toolName: '',
+  description: '',
+  protocolType: 'HTTP',
+  invokeUrl: '',
+  manifestUrl: '',
+  healthUrl: '',
+  triggerKeywords: '',
+  inputMode: 'FILE_AND_PARAMS',
+  outputMode: 'MIXED',
+  uploadRequired: true,
+  acceptedFileTypes: '.dxf,.dwg',
+  maxFiles: '200',
+  parametersSchema: '{\n  "type": "object",\n  "properties": {}\n}',
+  draftArgsTemplate: '{\n  "example": ""\n}',
+  status: 'ONLINE'
+}
+
+function createDefaultSkillForm() {
+  return { ...DEFAULT_SKILL_FORM }
+}
+
+function mapSkillItemToForm(item) {
+  if (!item || typeof item !== 'object') return createDefaultSkillForm()
+  return {
+    toolCode: String(item.tool_code || item.toolCode || ''),
+    toolName: String(item.tool_name || item.toolName || ''),
+    description: String(item.description || ''),
+    protocolType: String(item.protocol_type || item.protocolType || 'HTTP'),
+    invokeUrl: String(item.invoke_url || item.invokeUrl || ''),
+    manifestUrl: String(item.manifest_url || item.manifestUrl || ''),
+    healthUrl: String(item.health_url || item.healthUrl || ''),
+    triggerKeywords: String(item.trigger_keywords || item.triggerKeywords || ''),
+    inputMode: String(item.input_mode || item.inputMode || 'FILE_AND_PARAMS'),
+    outputMode: String(item.output_mode || item.outputMode || 'MIXED'),
+    uploadRequired: Number(item.upload_required ?? item.uploadRequired ?? 1) === 1,
+    acceptedFileTypes: String(item.accepted_file_types || item.acceptedFileTypes || '.dxf,.dwg'),
+    maxFiles: String(item.max_files ?? item.maxFiles ?? 200),
+    parametersSchema: String(item.parameters_schema || item.parametersSchema || DEFAULT_SKILL_FORM.parametersSchema),
+    draftArgsTemplate: String(item.draft_args_template || item.draftArgsTemplate || DEFAULT_SKILL_FORM.draftArgsTemplate),
+    status: String(item.status || 'ONLINE')
+  }
+}
+
+function buildSkillRegisterPayload(form) {
+  return {
+    toolCode: String(form.toolCode || '').trim(),
+    toolName: String(form.toolName || '').trim(),
+    description: String(form.description || '').trim(),
+    protocolType: String(form.protocolType || 'HTTP'),
+    invokeUrl: String(form.invokeUrl || '').trim(),
+    manifestUrl: String(form.manifestUrl || '').trim(),
+    healthUrl: String(form.healthUrl || '').trim(),
+    triggerKeywords: String(form.triggerKeywords || '').trim(),
+    inputMode: String(form.inputMode || 'FILE_AND_PARAMS'),
+    outputMode: String(form.outputMode || 'MIXED'),
+    uploadRequired: Boolean(form.uploadRequired),
+    acceptedFileTypes: String(form.acceptedFileTypes || '').trim(),
+    maxFiles: Number(form.maxFiles || 0),
+    parametersSchema: String(form.parametersSchema || '').trim(),
+    draftArgsTemplate: String(form.draftArgsTemplate || '').trim(),
+    status: String(form.status || 'ONLINE')
+  }
+}
+
+function SkillFormPanel({ title, description, form, setForm, onSubmit, submitText, pending, lockToolCode = false }) {
+  const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  return (
+    <form onSubmit={onSubmit} className="bg-white rounded-xl border shadow-sm p-5 space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
+        <p className="text-sm text-slate-500 mt-1">{description}</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">tool_code（唯一编码）*</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：无，建议小写字母+下划线，例如 `cad_area_calc`</p>
+          <input value={form.toolCode} disabled={lockToolCode} onChange={(e) => setField('toolCode', e.target.value)} placeholder="cad_area_calc" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">tool_name（显示名称）*</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：无，例如“面积计算”</p>
+          <input value={form.toolName} onChange={(e) => setField('toolName', e.target.value)} placeholder="面积计算" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">invoke_url（调用地址）*</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：无，例如 `http://host:port/invoke`</p>
+          <input value={form.invokeUrl} onChange={(e) => setField('invokeUrl', e.target.value)} placeholder="http://127.0.0.1:9001/invoke" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">description（用途说明）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：空，简要说明技能用于什么业务</p>
+          <input value={form.description} onChange={(e) => setField('description', e.target.value)} placeholder="用于 CAD 图纸面积自动计算" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">manifest_url（协议描述地址）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：空，外部协议说明文档地址</p>
+          <input value={form.manifestUrl} onChange={(e) => setField('manifestUrl', e.target.value)} placeholder="http://127.0.0.1:9001/.well-known/manifest.json" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">health_url（健康检查地址）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：空，便于平台定时探活</p>
+          <input value={form.healthUrl} onChange={(e) => setField('healthUrl', e.target.value)} placeholder="http://127.0.0.1:9001/health" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">trigger_keywords（触发词）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：空，逗号分隔，如 `面积,半面积,计算`</p>
+          <input value={form.triggerKeywords} onChange={(e) => setField('triggerKeywords', e.target.value)} placeholder="面积,半面积,计算" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">accepted_file_types（允许文件类型）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：`.dxf,.dwg`，英文逗号分隔</p>
+          <input value={form.acceptedFileTypes} onChange={(e) => setField('acceptedFileTypes', e.target.value)} placeholder=".dxf,.dwg" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">max_files（最大上传数）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：200</p>
+          <input type="number" min="1" value={form.maxFiles} onChange={(e) => setField('maxFiles', e.target.value)} placeholder="200" className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">protocol_type（协议类型）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：HTTP</p>
+          <select value={form.protocolType} onChange={(e) => setField('protocolType', e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="HTTP">HTTP</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">input_mode（输入模式）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：FILE_AND_PARAMS</p>
+          <select value={form.inputMode} onChange={(e) => setField('inputMode', e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="FILE_AND_PARAMS">FILE_AND_PARAMS</option>
+            <option value="PARAMS_ONLY">PARAMS_ONLY</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">output_mode（输出模式）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：MIXED</p>
+          <select value={form.outputMode} onChange={(e) => setField('outputMode', e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="MIXED">MIXED</option>
+            <option value="TEXT">TEXT</option>
+            <option value="FILE">FILE</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">status（上线状态）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：ONLINE</p>
+          <select value={form.status} onChange={(e) => setField('status', e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="ONLINE">ONLINE</option>
+            <option value="OFFLINE">OFFLINE</option>
+          </select>
+        </div>
+        <div className="md:col-span-2 xl:col-span-3">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={form.uploadRequired} onChange={(e) => setField('uploadRequired', e.target.checked)} />
+            <span className="font-medium">upload_required（是否必须上传文件）</span>
+          </label>
+          <p className="text-[11px] text-slate-500 mt-1">默认值：勾选。若取消，表示可纯参数调用。</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">parameters_schema（参数 JSON Schema）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：`type=object` 空属性，可按 JSON Schema 扩展</p>
+          <textarea value={form.parametersSchema} onChange={(e) => setField('parametersSchema', e.target.value)} rows={8} className="w-full font-mono text-xs px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">draft_args_template（草稿参数模板）</label>
+          <p className="text-[11px] text-slate-500 mb-1">默认值：示例 JSON（example 字段），用于预填表单</p>
+          <textarea value={form.draftArgsTemplate} onChange={(e) => setField('draftArgsTemplate', e.target.value)} rows={8} className="w-full font-mono text-xs px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button type="submit" disabled={pending} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+          {pending ? '提交中...' : submitText}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function SkillManager() {
+  const [subPage, setSubPage] = useState('overview')
   const [skills, setSkills] = useState([])
   const [auditRows, setAuditRows] = useState([])
+  const [auditTotal, setAuditTotal] = useState(0)
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [auditLoading, setAuditLoading] = useState(false)
   const [skillsError, setSkillsError] = useState('')
   const [auditError, setAuditError] = useState('')
   const [onlineOnly, setOnlineOnly] = useState(false)
-  const [auditLimit, setAuditLimit] = useState('100')
-  const [actionPending, setActionPending] = useState({})
-  const [registerPending, setRegisterPending] = useState(false)
-  const [registerForm, setRegisterForm] = useState({
-    toolCode: '',
-    toolName: '',
-    description: '',
-    protocolType: 'HTTP',
-    invokeUrl: '',
-    manifestUrl: '',
-    healthUrl: '',
-    triggerKeywords: '',
-    inputMode: 'FILE_AND_PARAMS',
-    outputMode: 'MIXED',
-    uploadRequired: true,
-    acceptedFileTypes: '.dxf',
-    maxFiles: '200',
-    parametersSchema: '',
-    draftArgsTemplate: '',
-    status: 'ONLINE'
+  const [auditOptions, setAuditOptions] = useState({
+    statuses: [],
+    usernames: [],
+    toolCodes: []
   })
+  const [auditFilters, setAuditFilters] = useState({
+    page: 1,
+    pageSize: 20,
+    startTime: '',
+    endTime: '',
+    username: '',
+    status: '',
+    toolCode: ''
+  })
+  const [actionPending, setActionPending] = useState({})
+  const [createPending, setCreatePending] = useState(false)
+  const [updatePending, setUpdatePending] = useState(false)
+  const [createForm, setCreateForm] = useState(() => createDefaultSkillForm())
+  const [updateForm, setUpdateForm] = useState(() => createDefaultSkillForm())
 
   const loadSkills = useCallback(async (nextOnlineOnly = onlineOnly) => {
     setSkillsLoading(true)
@@ -2201,30 +2559,124 @@ function SkillManager() {
     }
   }, [onlineOnly])
 
-  const loadAudit = useCallback(async (nextLimit = auditLimit) => {
+  const loadAudit = useCallback(async (nextFilters = auditFilters) => {
     setAuditLoading(true)
     setAuditError('')
     try {
-      const data = await fetchSkillAudit(nextLimit)
-      setAuditRows(data)
+      const data = await fetchSkillAudit(nextFilters)
+      setAuditRows(Array.isArray(data?.items) ? data.items : [])
+      setAuditTotal(Number(data?.total || 0))
     } catch (e) {
       setAuditRows([])
+      setAuditTotal(0)
       setAuditError(e?.message || '加载失败')
     } finally {
       setAuditLoading(false)
     }
-  }, [auditLimit])
+  }, [])
 
   useEffect(() => {
     loadSkills(onlineOnly)
-    loadAudit(auditLimit)
-  }, [onlineOnly, auditLimit, loadSkills, loadAudit])
+  }, [onlineOnly, loadSkills])
+
+  useEffect(() => {
+    loadAudit(auditFilters)
+    fetchSkillAuditOptions()
+      .then(data => setAuditOptions(data))
+      .catch(() => setAuditOptions({ statuses: [], usernames: [], toolCodes: [] }))
+  }, [])
+
+  const setAuditFilterField = (key, value) => {
+    setAuditFilters(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleAuditSearch = () => {
+    const next = { ...auditFilters, page: 1 }
+    setAuditFilters(next)
+    loadAudit(next)
+  }
+
+  const handleAuditReset = () => {
+    const next = {
+      page: 1,
+      pageSize: 20,
+      startTime: '',
+      endTime: '',
+      username: '',
+      status: '',
+      toolCode: ''
+    }
+    setAuditFilters(next)
+    loadAudit(next)
+  }
+
+  const handleAuditPageChange = (nextPage) => {
+    const safePage = Math.max(1, nextPage)
+    const next = { ...auditFilters, page: safePage }
+    setAuditFilters(next)
+    loadAudit(next)
+  }
+
+  const auditTotalPages = Math.max(1, Math.ceil(auditTotal / Math.max(1, Number(auditFilters.pageSize) || 20)))
+  const auditPageNumbers = Array.from({ length: auditTotalPages }, (_, idx) => idx + 1).slice(0, 200)
 
   const formatTime = (value) => {
     if (!value) return '-'
     const dt = new Date(value)
     if (Number.isNaN(dt.getTime())) return String(value)
     return dt.toLocaleString()
+  }
+
+  const assertFormRequired = (form) => {
+    if (!String(form.toolCode || '').trim()) {
+      alert('tool_code 不能为空')
+      return false
+    }
+    if (!String(form.toolName || '').trim()) {
+      alert('tool_name 不能为空')
+      return false
+    }
+    if (!String(form.invokeUrl || '').trim()) {
+      alert('invoke_url 不能为空')
+      return false
+    }
+    return true
+  }
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault()
+    if (!assertFormRequired(createForm)) return
+    setCreatePending(true)
+    try {
+      await registerAdminSkill(buildSkillRegisterPayload(createForm))
+      setCreateForm(createDefaultSkillForm())
+      await loadSkills(onlineOnly)
+      setSubPage('overview')
+    } catch (error) {
+      alert(error?.message || '新增技能失败')
+    } finally {
+      setCreatePending(false)
+    }
+  }
+
+  const handleUpdateSubmit = async (e) => {
+    e.preventDefault()
+    if (!assertFormRequired(updateForm)) return
+    setUpdatePending(true)
+    try {
+      await registerAdminSkill(buildSkillRegisterPayload(updateForm))
+      await loadSkills(onlineOnly)
+      setSubPage('overview')
+    } catch (error) {
+      alert(error?.message || '更新技能失败')
+    } finally {
+      setUpdatePending(false)
+    }
+  }
+
+  const handleOpenUpdate = (item) => {
+    setUpdateForm(mapSkillItemToForm(item))
+    setSubPage('update')
   }
 
   const handleOffline = async (toolCode) => {
@@ -2272,315 +2724,362 @@ function SkillManager() {
     }
   }
 
-  const handleRegister = async (e) => {
-    e.preventDefault()
-    if (!registerForm.toolCode.trim()) {
-      alert('tool_code 不能为空')
-      return
-    }
-    if (!registerForm.toolName.trim()) {
-      alert('tool_name 不能为空')
-      return
-    }
-    if (!registerForm.invokeUrl.trim()) {
-      alert('invoke_url 不能为空')
-      return
-    }
-    setRegisterPending(true)
-    try {
-      await registerAdminSkill({
-        toolCode: registerForm.toolCode.trim(),
-        toolName: registerForm.toolName.trim(),
-        description: registerForm.description.trim(),
-        protocolType: registerForm.protocolType,
-        invokeUrl: registerForm.invokeUrl.trim(),
-        manifestUrl: registerForm.manifestUrl.trim(),
-        healthUrl: registerForm.healthUrl.trim(),
-        triggerKeywords: registerForm.triggerKeywords.trim(),
-        inputMode: registerForm.inputMode,
-        outputMode: registerForm.outputMode,
-        uploadRequired: Boolean(registerForm.uploadRequired),
-        acceptedFileTypes: registerForm.acceptedFileTypes.trim(),
-        maxFiles: Number(registerForm.maxFiles || 0),
-        parametersSchema: registerForm.parametersSchema.trim(),
-        draftArgsTemplate: registerForm.draftArgsTemplate.trim(),
-        status: registerForm.status
-      })
-      setRegisterForm(prev => ({
-        ...prev,
-        toolCode: '',
-        toolName: '',
-        description: '',
-        invokeUrl: '',
-        manifestUrl: '',
-        healthUrl: '',
-        triggerKeywords: '',
-        parametersSchema: '',
-        draftArgsTemplate: ''
-      }))
-      await loadSkills(onlineOnly)
-    } catch (e2) {
-      alert(e2?.message || '新增技能失败')
-    } finally {
-      setRegisterPending(false)
-    }
-  }
-
-  const handleSearchAudit = async () => {
-    await loadAudit(auditLimit)
-  }
-
   return (
     <div className="p-8 h-full overflow-y-auto">
       <div className="max-w-[1400px] mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">技能管理</h2>
-            <p className="text-sm text-slate-500 mt-1">管理员可新增、上线/下线、删除技能，并查询调用审计</p>
+            <p className="text-sm text-slate-500 mt-1">仅支持从列表进入“更新技能”；新增技能按钮已移动到列表工具栏。</p>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={onlineOnly}
-                onChange={(e) => setOnlineOnly(e.target.checked)}
-                className="rounded border-slate-300"
-              />
-              仅显示在线技能
-            </label>
+        </div>
+
+        {subPage === 'create' && (
+          <>
             <button
-              onClick={() => loadSkills(onlineOnly)}
-              disabled={skillsLoading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              onClick={() => setSubPage('overview')}
+              className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-100"
             >
-              <RefreshCw size={16} />
-              刷新技能
+              返回技能列表
             </button>
-          </div>
-        </div>
-
-        <form onSubmit={handleRegister} className="bg-white rounded-xl border shadow-sm p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <input value={registerForm.toolCode} onChange={(e) => setRegisterForm(prev => ({ ...prev, toolCode: e.target.value }))} placeholder="tool_code *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.toolName} onChange={(e) => setRegisterForm(prev => ({ ...prev, toolName: e.target.value }))} placeholder="tool_name *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.invokeUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, invokeUrl: e.target.value }))} placeholder="invoke_url *" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.description} onChange={(e) => setRegisterForm(prev => ({ ...prev, description: e.target.value }))} placeholder="description" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.manifestUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, manifestUrl: e.target.value }))} placeholder="manifest_url" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.healthUrl} onChange={(e) => setRegisterForm(prev => ({ ...prev, healthUrl: e.target.value }))} placeholder="health_url" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.triggerKeywords} onChange={(e) => setRegisterForm(prev => ({ ...prev, triggerKeywords: e.target.value }))} placeholder="trigger_keywords(逗号分隔)" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={registerForm.acceptedFileTypes} onChange={(e) => setRegisterForm(prev => ({ ...prev, acceptedFileTypes: e.target.value }))} placeholder="accepted_file_types" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <select value={registerForm.protocolType} onChange={(e) => setRegisterForm(prev => ({ ...prev, protocolType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="HTTP">HTTP</option>
-            </select>
-            <select value={registerForm.inputMode} onChange={(e) => setRegisterForm(prev => ({ ...prev, inputMode: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="FILE_AND_PARAMS">FILE_AND_PARAMS</option>
-              <option value="PARAMS_ONLY">PARAMS_ONLY</option>
-            </select>
-            <select value={registerForm.outputMode} onChange={(e) => setRegisterForm(prev => ({ ...prev, outputMode: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="MIXED">MIXED</option>
-              <option value="TEXT">TEXT</option>
-              <option value="FILE">FILE</option>
-            </select>
-            <select value={registerForm.status} onChange={(e) => setRegisterForm(prev => ({ ...prev, status: e.target.value }))} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="ONLINE">ONLINE</option>
-              <option value="OFFLINE">OFFLINE</option>
-            </select>
-            <input type="number" min="1" value={registerForm.maxFiles} onChange={(e) => setRegisterForm(prev => ({ ...prev, maxFiles: e.target.value }))} placeholder="max_files" className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <label className="inline-flex items-center gap-2 text-sm text-slate-600 px-3 py-2 border rounded-lg bg-slate-50">
-              <input type="checkbox" checked={registerForm.uploadRequired} onChange={(e) => setRegisterForm(prev => ({ ...prev, uploadRequired: e.target.checked }))} />
-              upload_required
-            </label>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
-            <textarea value={registerForm.parametersSchema} onChange={(e) => setRegisterForm(prev => ({ ...prev, parametersSchema: e.target.value }))} placeholder="parameters_schema(JSON字符串)" rows={4} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <textarea value={registerForm.draftArgsTemplate} onChange={(e) => setRegisterForm(prev => ({ ...prev, draftArgsTemplate: e.target.value }))} placeholder="draft_args_template(JSON字符串)" rows={4} className="px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="mt-3 flex justify-end">
-            <button type="submit" disabled={registerPending} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
-              {registerPending ? '提交中...' : '新增/更新技能'}
-            </button>
-          </div>
-        </form>
-
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          {skillsError && (
-            <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
-              {skillsError}
-            </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b">
-                <tr className="text-slate-600">
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_name</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">版本</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">更新时间</th>
-                  <th className="px-3 py-2 text-left font-semibold">描述</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {skillsLoading && (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 className="animate-spin" size={16} />
-                        加载中...
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {!skillsLoading && skills.length === 0 && (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
-                      暂无技能
-                    </td>
-                  </tr>
-                )}
-                {!skillsLoading && skills.map((item) => (
-                  <tr key={item.tool_code || item.id} className="border-b last:border-b-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{item.tool_code || '-'}</td>
-                    <td className="px-3 py-2 align-top text-slate-800">{item.tool_name || '-'}</td>
-                    <td className="px-3 py-2 align-top">
-                      <span className={cn(
-                        'px-2 py-0.5 rounded text-xs font-medium',
-                        String(item.status || '').toUpperCase() === 'ONLINE'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-200 text-slate-700'
-                      )}>
-                        {item.status || '-'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 align-top text-slate-700">{item.version ?? '-'}</td>
-                    <td className="px-3 py-2 align-top text-slate-600 whitespace-nowrap">{formatTime(item.updated_at)}</td>
-                    <td className="px-3 py-2 align-top text-slate-700 min-w-[320px]">{item.description || '-'}</td>
-                    <td className="px-3 py-2 align-top">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleOnline(item.tool_code)}
-                          disabled={String(item.status || '').toUpperCase() === 'ONLINE' || !!actionPending[`online:${item.tool_code}`]}
-                          className="px-3 py-1.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
-                        >
-                          {actionPending[`online:${item.tool_code}`] ? '处理中...' : '上线'}
-                        </button>
-                        <button
-                          onClick={() => handleOffline(item.tool_code)}
-                          disabled={String(item.status || '').toUpperCase() !== 'ONLINE' || !!actionPending[`offline:${item.tool_code}`]}
-                          className="px-3 py-1.5 rounded border border-amber-300 text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
-                        >
-                          {actionPending[`offline:${item.tool_code}`] ? '处理中...' : '下线'}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.tool_code)}
-                          disabled={!!actionPending[`delete:${item.tool_code}`]}
-                          className="px-3 py-1.5 rounded border border-rose-300 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
-                        >
-                          {actionPending[`delete:${item.tool_code}`] ? '处理中...' : '删除'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">审计条数</label>
-            <input
-              type="number"
-              min="1"
-              max="500"
-              value={auditLimit}
-              onChange={(e) => setAuditLimit(e.target.value)}
-              className="w-28 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <SkillFormPanel
+              title="新增技能"
+              description="每个参数都带名称、简介和默认值，便于快速填写。"
+              form={createForm}
+              setForm={setCreateForm}
+              onSubmit={handleCreateSubmit}
+              submitText="新增技能"
+              pending={createPending}
             />
-          </div>
-          <button
-            onClick={handleSearchAudit}
-            disabled={auditLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            <Search size={16} />
-            查询审计
-          </button>
-          <button
-            onClick={() => loadAudit(auditLimit)}
-            disabled={auditLoading}
-            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2"
-          >
-            <RefreshCw size={16} />
-            刷新
-          </button>
-        </div>
+          </>
+        )}
 
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          {auditError && (
-            <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
-              {auditError}
+        {subPage === 'update' && (
+          <>
+            <button
+              onClick={() => setSubPage('overview')}
+              className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              返回技能列表
+            </button>
+            <SkillFormPanel
+              title="更新技能"
+              description="从列表点击“修改”后会自动回填；tool_code 作为唯一标识，更新时默认锁定。"
+              form={updateForm}
+              setForm={setUpdateForm}
+              onSubmit={handleUpdateSubmit}
+              submitText="更新技能"
+              pending={updatePending}
+              lockToolCode
+            />
+          </>
+        )}
+
+        {subPage === 'overview' && (
+          <>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={onlineOnly}
+                  onChange={(e) => setOnlineOnly(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                仅显示在线技能
+              </label>
+              <button
+                onClick={() => {
+                  setCreateForm(createDefaultSkillForm())
+                  setSubPage('create')
+                }}
+                className="px-4 py-2 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 flex items-center gap-2"
+              >
+                <Plus size={16} />
+                新增技能
+              </button>
+              <button
+                onClick={() => loadSkills(onlineOnly)}
+                disabled={skillsLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <RefreshCw size={16} />
+                刷新技能
+              </button>
             </div>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b">
-                <tr className="text-slate-600">
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">时间</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_call_id</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">耗时(ms)</th>
-                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">用户</th>
-                  <th className="px-3 py-2 text-left font-semibold">错误</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLoading && (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 className="animate-spin" size={16} />
-                        加载中...
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {!auditLoading && auditRows.length === 0 && (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
-                      暂无审计记录
-                    </td>
-                  </tr>
-                )}
-                {!auditLoading && auditRows.map((row) => (
-                  <tr key={row.id || row.tool_call_id} className="border-b last:border-b-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 align-top whitespace-nowrap text-slate-600">{formatTime(row.created_at)}</td>
-                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{row.tool_call_id || '-'}</td>
-                    <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{row.tool_code || '-'}</td>
-                    <td className="px-3 py-2 align-top">
-                      <span className={cn(
-                        'px-2 py-0.5 rounded text-xs font-medium',
-                        String(row.status || '').toUpperCase() === 'SUCCESS'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : String(row.status || '').toUpperCase() === 'FAILED'
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-indigo-100 text-indigo-700'
-                      )}>
-                        {row.status || '-'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 align-top text-slate-700">{row.latency_ms ?? '-'}</td>
-                    <td className="px-3 py-2 align-top text-slate-700">{row.username || row.user_id || '-'}</td>
-                    <td className="px-3 py-2 align-top text-slate-600 min-w-[260px] break-all">{row.error_message || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              {skillsError && (
+                <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
+                  {skillsError}
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr className="text-slate-600">
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_name</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">版本</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">更新时间</th>
+                      <th className="px-3 py-2 text-left font-semibold">描述</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {skillsLoading && (
+                      <tr>
+                        <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                          <div className="inline-flex items-center gap-2">
+                            <Loader2 className="animate-spin" size={16} />
+                            加载中...
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {!skillsLoading && skills.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                          暂无技能
+                        </td>
+                      </tr>
+                    )}
+                    {!skillsLoading && skills.map((item) => {
+                      const toolCode = item.tool_code || item.toolCode
+                      const status = String(item.status || '').toUpperCase()
+                      return (
+                        <tr key={toolCode || item.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                          <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{toolCode || '-'}</td>
+                          <td className="px-3 py-2 align-top text-slate-800">{item.tool_name || item.toolName || '-'}</td>
+                          <td className="px-3 py-2 align-top">
+                            <span className={cn('px-2 py-0.5 rounded text-xs font-medium', status === 'ONLINE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700')}>
+                              {item.status || '-'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 align-top text-slate-700">{item.version ?? '-'}</td>
+                          <td className="px-3 py-2 align-top text-slate-600 whitespace-nowrap">{formatTime(item.updated_at || item.updatedAt)}</td>
+                          <td className="px-3 py-2 align-top text-slate-700 min-w-[320px]">{item.description || '-'}</td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleOpenUpdate(item)}
+                                className="px-3 py-1.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 text-xs"
+                              >
+                                修改
+                              </button>
+                              <button
+                                onClick={() => handleOnline(toolCode)}
+                                disabled={status === 'ONLINE' || !!actionPending[`online:${toolCode}`]}
+                                className="px-3 py-1.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                              >
+                                {actionPending[`online:${toolCode}`] ? '处理中...' : '上线'}
+                              </button>
+                              <button
+                                onClick={() => handleOffline(toolCode)}
+                                disabled={status !== 'ONLINE' || !!actionPending[`offline:${toolCode}`]}
+                                className="px-3 py-1.5 rounded border border-amber-300 text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                              >
+                                {actionPending[`offline:${toolCode}`] ? '处理中...' : '下线'}
+                              </button>
+                              <button
+                                onClick={() => handleDelete(toolCode)}
+                                disabled={!!actionPending[`delete:${toolCode}`]}
+                                className="px-3 py-1.5 rounded border border-rose-300 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                              >
+                                {actionPending[`delete:${toolCode}`] ? '处理中...' : '删除'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">开始时间</label>
+                <input
+                  type="date"
+                  value={auditFilters.startTime}
+                  onChange={(e) => setAuditFilterField('startTime', e.target.value)}
+                  className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">结束时间</label>
+                <input
+                  type="date"
+                  value={auditFilters.endTime}
+                  onChange={(e) => setAuditFilterField('endTime', e.target.value)}
+                  className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">用户</label>
+                <input
+                  list="audit-username-options"
+                  value={auditFilters.username}
+                  onChange={(e) => setAuditFilterField('username', e.target.value)}
+                  placeholder="用户名"
+                  className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <datalist id="audit-username-options">
+                  {auditOptions.usernames.map(option => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">状态</label>
+                <select
+                  value={auditFilters.status}
+                  onChange={(e) => setAuditFilterField('status', e.target.value)}
+                  className="w-32 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">全部</option>
+                  {auditOptions.statuses.map(option => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">tool_code</label>
+                <input
+                  list="audit-tool-code-options"
+                  value={auditFilters.toolCode}
+                  onChange={(e) => setAuditFilterField('toolCode', e.target.value)}
+                  placeholder="技能编码"
+                  className="w-40 px-3 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <datalist id="audit-tool-code-options">
+                  {auditOptions.toolCodes.map(option => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+              </div>
+              <button
+                onClick={handleAuditSearch}
+                disabled={auditLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Search size={16} />
+                查询
+              </button>
+              <button
+                onClick={handleAuditReset}
+                disabled={auditLoading}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 disabled:opacity-50 flex items-center gap-2"
+              >
+                <RefreshCw size={16} />
+                重置
+              </button>
+            </div>
+
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              {auditError && (
+                <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
+                  {auditError}
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr className="text-slate-600">
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">时间</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">tool_code</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">状态</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">耗时(ms)</th>
+                      <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">用户</th>
+                      <th className="px-3 py-2 text-left font-semibold">错误</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLoading && (
+                      <tr>
+                        <td className="px-3 py-8 text-center text-slate-400" colSpan={6}>
+                          <div className="inline-flex items-center gap-2">
+                            <Loader2 className="animate-spin" size={16} />
+                            加载中...
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {!auditLoading && auditRows.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-8 text-center text-slate-400" colSpan={6}>
+                          暂无审计记录
+                        </td>
+                      </tr>
+                    )}
+                    {!auditLoading && auditRows.map((row) => {
+                      const status = String(row.status || '').toUpperCase()
+                      return (
+                        <tr key={row.id || row.tool_call_id || row.toolCallId} className="border-b last:border-b-0 hover:bg-slate-50">
+                          <td className="px-3 py-2 align-top whitespace-nowrap text-slate-600">{formatTime(row.created_at || row.createdAt)}</td>
+                          <td className="px-3 py-2 align-top font-mono text-xs text-slate-700">{row.tool_code || row.toolCode || '-'}</td>
+                          <td className="px-3 py-2 align-top">
+                            <span className={cn('px-2 py-0.5 rounded text-xs font-medium', status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' : status === 'FAILED' ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700')}>
+                              {row.status || '-'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 align-top text-slate-700">{row.latency_ms ?? row.latencyMs ?? '-'}</td>
+                          <td className="px-3 py-2 align-top text-slate-700">{row.username || '-'}</td>
+                          <td className="px-3 py-2 align-top text-slate-600 min-w-[260px] break-all">{row.error_message || row.errorMessage || '-'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-3 border-t bg-slate-50 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                <span>共 {auditTotal} 条</span>
+                <span>第 {auditFilters.page} / {auditTotalPages} 页</span>
+                <button
+                  onClick={() => handleAuditPageChange(auditFilters.page - 1)}
+                  disabled={auditLoading || auditFilters.page <= 1}
+                  className="px-2 py-1 border rounded hover:bg-white disabled:opacity-50"
+                >
+                  上一页
+                </button>
+                <button
+                  onClick={() => handleAuditPageChange(auditFilters.page + 1)}
+                  disabled={auditLoading || auditFilters.page >= auditTotalPages}
+                  className="px-2 py-1 border rounded hover:bg-white disabled:opacity-50"
+                >
+                  下一页
+                </button>
+                <select
+                  value={String(auditFilters.page)}
+                  onChange={(e) => handleAuditPageChange(Number(e.target.value))}
+                  className="px-2 py-1 border rounded bg-white"
+                >
+                  {auditPageNumbers.map(pageNo => (
+                    <option key={pageNo} value={pageNo}>{pageNo}</option>
+                  ))}
+                </select>
+                <div className="ml-auto inline-flex items-center gap-2">
+                  <span>每页</span>
+                  <select
+                    value={String(auditFilters.pageSize)}
+                    onChange={(e) => {
+                      const next = { ...auditFilters, pageSize: Number(e.target.value), page: 1 }
+                      setAuditFilters(next)
+                      loadAudit(next)
+                    }}
+                    className="px-2 py-1 border rounded bg-white"
+                  >
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -3167,6 +3666,14 @@ function ChatInterface() {
   const [conversationLoading, setConversationLoading] = useState(false)
   const [conversationError, setConversationError] = useState('')
   const [conversations, setConversations] = useState([])
+  const [conversationPage, setConversationPage] = useState(1)
+  const [conversationHasMore, setConversationHasMore] = useState(false)
+  const [conversationRetentionDays, setConversationRetentionDays] = useState(90)
+  const [conversationListLoadingMore, setConversationListLoadingMore] = useState(false)
+  const [messageHasMore, setMessageHasMore] = useState(false)
+  const [messageBeforeId, setMessageBeforeId] = useState(null)
+  const [messageLoadingMore, setMessageLoadingMore] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [activeConversationTitle, setActiveConversationTitle] = useState('')
   const [renamingConversationId, setRenamingConversationId] = useState('')
   const [renamingTitle, setRenamingTitle] = useState('')
@@ -3182,9 +3689,19 @@ function ChatInterface() {
   const [planDrafts, setPlanDrafts] = useState({})
   const [planUiStates, setPlanUiStates] = useState({})
   const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
   const abortControllerRef = useRef(null)
   const currentRequestIdRef = useRef(0)
+  // 上滑加载历史消息时关闭自动滚动到底部，避免视图被强制跳回最新消息。
+  const suppressAutoScrollRef = useRef(false)
   const conversationIdRef = useRef('')
+  const conversationListRef = useRef(null)
+  const messagesContainerRef = useRef(null)
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionStart, setMentionStart] = useState(-1)
+  const [mentionEnd, setMentionEnd] = useState(-1)
+  const [mentionIndex, setMentionIndex] = useState(0)
   const quickRouteExamples = [
     '什么是指标校核',
     '请使用指标校核',
@@ -3194,8 +3711,29 @@ function ChatInterface() {
   ]
 
   useEffect(() => {
+    if (suppressAutoScrollRef.current) {
+      suppressAutoScrollRef.current = false
+      return
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    setShowScrollToBottom(false)
   }, [messages])
+
+  const updateScrollToBottomVisibility = useCallback((node) => {
+    if (!node) {
+      setShowScrollToBottom(false)
+      return
+    }
+    const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight
+    setShowScrollToBottom(distanceToBottom > 140)
+  }, [])
+
+  const handleScrollToBottom = useCallback(() => {
+    const node = messagesContainerRef.current
+    if (!node) return
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+    setShowScrollToBottom(false)
+  }, [])
 
   const normalizeConversationTitle = useCallback((item) => {
     return item?.name || item?.title || item?.conversationTitle || item?.conversation_id || '未命名会话'
@@ -3240,6 +3778,9 @@ function ChatInterface() {
     const logicFlow = typeof payload?.logicFlow === 'string'
       ? payload.logicFlow
       : (typeof item?.logicFlow === 'string' ? item.logicFlow : '')
+    const skillHint = typeof payload?.skillHint === 'string'
+      ? payload.skillHint
+      : (typeof item?.skillHint === 'string' ? item.skillHint : '')
     const analysisPlan = payload?.analysisPlan && typeof payload.analysisPlan === 'object'
       ? payload.analysisPlan
       : (item?.analysisPlan && typeof item.analysisPlan === 'object' ? item.analysisPlan : null)
@@ -3263,6 +3804,7 @@ function ChatInterface() {
       references: refs,
       sourceTag,
       logicFlow,
+      skillHint,
       analysisPlan,
       analysisSteps,
       analysisSummary,
@@ -3278,6 +3820,7 @@ function ChatInterface() {
       references: Array.isArray(msg.references) ? msg.references : [],
       sourceTag: String(msg.sourceTag || ''),
       logicFlow: String(msg.logicFlow || ''),
+      skillHint: String(msg.skillHint || ''),
       analysisPlan: msg.analysisPlan && typeof msg.analysisPlan === 'object' ? msg.analysisPlan : null,
       analysisSteps: Array.isArray(msg.analysisSteps) ? msg.analysisSteps : [],
       analysisSummary: msg.analysisSummary && typeof msg.analysisSummary === 'object' ? msg.analysisSummary : null,
@@ -3287,6 +3830,7 @@ function ChatInterface() {
     const hasExtra = payload.references.length > 0
       || payload.sourceTag
       || payload.logicFlow
+      || payload.skillHint
       || payload.analysisPlan
       || payload.analysisSteps.length > 0
       || payload.analysisSummary
@@ -3296,75 +3840,182 @@ function ChatInterface() {
     return JSON.stringify(payload)
   }
 
+  const buildMessagesAndDraftsFromHistory = useCallback((history, conversationId) => {
+    const mappedMessages = (Array.isArray(history) ? history : [])
+      .map(item => normalizeMessageFromHistory(item))
+      .filter(item => item.content)
+    const recoveredPlanDrafts = {}
+    mappedMessages.forEach((msg, index) => {
+      if (!msg.analysisPlan || typeof msg.analysisPlan !== 'object') return
+      const messageId = msg.id ?? `${conversationId}-history-${index}`
+      msg.id = messageId
+      const steps = Array.isArray(msg.analysisPlan.steps) ? msg.analysisPlan.steps.map(normalizePlanStep) : []
+      const historyAnalysisSteps = Array.isArray(msg.analysisSteps) ? msg.analysisSteps : []
+      recoveredPlanDrafts[messageId] = {
+        planId: msg.analysisPlan.planId || msg.analysisPlan.plan_id || '',
+        version: msg.analysisPlan.version || 1,
+        query: msg.analysisPlan.query || '',
+        deepThinking: msg.analysisPlan.deepThinking || msg.analysisPlan.deep_thinking || '',
+        questionType: msg.analysisPlan.questionType || msg.analysisPlan.question_type || '',
+        summary: msg.analysisPlan.summary || '',
+        rerunMode: msg.analysisPlan.rerunMode || msg.analysisPlan.rerun_mode || 'AUTO',
+        restartFromStep: Number(msg.analysisPlan.restartFromStep || msg.analysisPlan.restart_from_step || 1),
+        adjustmentInstruction: msg.analysisPlan.adjustmentInstruction || '',
+        editedSteps: steps,
+        analysisSteps: historyAnalysisSteps,
+        analysisSummary: msg.analysisSummary || null
+      }
+    })
+    return { mappedMessages, recoveredPlanDrafts }
+  }, [normalizeMessageFromHistory])
+
+  const loadConversationMessages = useCallback(async (targetConversationId, beforeId = null) => {
+    if (!targetConversationId) {
+      return { items: [], hasMore: false, nextBeforeId: null }
+    }
+    return fetchConversationMessages(targetConversationId, { beforeId, limit: 50 })
+  }, [])
+
   const loadConversationListAndMessages = useCallback(async (preferConversationId = '') => {
     setConversationLoading(true)
     setConversationError('')
     try {
-      let list = await fetchConversations()
-      if (list.length === 0) {
+      let result = await fetchConversations({ page: 1, pageSize: 50 })
+      if (!Array.isArray(result.items) || result.items.length === 0) {
         const created = await createConversation('新对话')
         if (created) {
-          list = await fetchConversations()
+          result = await fetchConversations({ page: 1, pageSize: 50 })
         }
       }
-      const normalizedList = list
+      const normalizedList = (Array.isArray(result.items) ? result.items : [])
         .map(item => ({
           id: normalizeConversationId(item),
           title: normalizeConversationTitle(item),
-          createTime: item?.createTime || item?.create_time || ''
+          createTime: item?.createTime || item?.create_time || '',
+          remainingDays: Number(item?.remainingDays ?? item?.remaining_days ?? 0)
         }))
         .filter(item => item.id)
       setConversations(normalizedList)
+      setConversationPage(1)
+      setConversationHasMore(Boolean(result?.hasMore))
+      setConversationRetentionDays(Number(result?.retentionDays || 90))
       const preferred = normalizedList.find(item => item.id === preferConversationId)
       const current = preferred || normalizedList[0]
       if (!current) {
         conversationIdRef.current = ''
         setActiveConversationTitle('')
         setMessages([createDefaultAssistantMessage()])
+        setMessageHasMore(false)
+        setMessageBeforeId(null)
         return
       }
       conversationIdRef.current = current.id
       setActiveConversationTitle(current.title || '')
-      const history = await fetchConversationMessages(current.id)
-      const mappedMessages = history
-        .map(item => normalizeMessageFromHistory(item))
-        .filter(item => item.content)
-      const recoveredPlanDrafts = {}
-      mappedMessages.forEach((msg, index) => {
-        if (!msg.analysisPlan || typeof msg.analysisPlan !== 'object') return
-        const messageId = msg.id ?? `${current.id}-history-${index}`
-        msg.id = messageId
-        const steps = Array.isArray(msg.analysisPlan.steps) ? msg.analysisPlan.steps.map(normalizePlanStep) : []
-        const historyAnalysisSteps = Array.isArray(msg.analysisSteps) ? msg.analysisSteps : []
-        recoveredPlanDrafts[messageId] = {
-          planId: msg.analysisPlan.planId || msg.analysisPlan.plan_id || '',
-          version: msg.analysisPlan.version || 1,
-          query: msg.analysisPlan.query || '',
-          deepThinking: msg.analysisPlan.deepThinking || msg.analysisPlan.deep_thinking || '',
-          questionType: msg.analysisPlan.questionType || msg.analysisPlan.question_type || '',
-          summary: msg.analysisPlan.summary || '',
-          rerunMode: msg.analysisPlan.rerunMode || msg.analysisPlan.rerun_mode || 'AUTO',
-          restartFromStep: Number(msg.analysisPlan.restartFromStep || msg.analysisPlan.restart_from_step || 1),
-          adjustmentInstruction: msg.analysisPlan.adjustmentInstruction || '',
-          editedSteps: steps,
-          analysisSteps: historyAnalysisSteps,
-          analysisSummary: msg.analysisSummary || null
-        }
-      })
+      const historyPage = await loadConversationMessages(current.id, null)
+      const { mappedMessages, recoveredPlanDrafts } = buildMessagesAndDraftsFromHistory(historyPage?.items || [], current.id)
       setPlanDrafts(recoveredPlanDrafts)
       setPlanUiStates({})
       setMessages(mappedMessages.length > 0 ? mappedMessages : [createDefaultAssistantMessage()])
+      setMessageHasMore(Boolean(historyPage?.hasMore))
+      setMessageBeforeId(historyPage?.nextBeforeId ?? null)
     } catch (err) {
       setConversationError(err?.message || '会话加载失败')
       setMessages([createDefaultAssistantMessage()])
+      setMessageHasMore(false)
+      setMessageBeforeId(null)
     } finally {
       setConversationLoading(false)
     }
-  }, [createDefaultAssistantMessage, normalizeConversationId, normalizeConversationTitle, normalizeMessageFromHistory])
+  }, [buildMessagesAndDraftsFromHistory, createDefaultAssistantMessage, loadConversationMessages, normalizeConversationId, normalizeConversationTitle])
 
   useEffect(() => {
     loadConversationListAndMessages()
   }, [loadConversationListAndMessages])
+
+  const loadMoreConversations = useCallback(async () => {
+    if (conversationListLoadingMore || !conversationHasMore) return
+    setConversationListLoadingMore(true)
+    try {
+      const nextPage = conversationPage + 1
+      const result = await fetchConversations({ page: nextPage, pageSize: 50 })
+      const normalized = (Array.isArray(result.items) ? result.items : [])
+        .map(item => ({
+          id: normalizeConversationId(item),
+          title: normalizeConversationTitle(item),
+          createTime: item?.createTime || item?.create_time || '',
+          remainingDays: Number(item?.remainingDays ?? item?.remaining_days ?? 0)
+        }))
+        .filter(item => item.id)
+      if (normalized.length > 0) {
+        setConversations(prev => {
+          const idSet = new Set(prev.map(item => item.id))
+          const merged = [...prev]
+          normalized.forEach(item => {
+            if (idSet.has(item.id)) return
+            merged.push(item)
+          })
+          return merged
+        })
+      }
+      setConversationPage(nextPage)
+      setConversationHasMore(Boolean(result?.hasMore))
+    } catch (err) {
+      setConversationError(err?.message || '加载更多会话失败')
+    } finally {
+      setConversationListLoadingMore(false)
+    }
+  }, [conversationHasMore, conversationListLoadingMore, conversationPage, normalizeConversationId, normalizeConversationTitle])
+
+  const loadMoreMessages = useCallback(async () => {
+    const activeId = conversationIdRef.current
+    if (!activeId || messageLoadingMore || !messageHasMore || !messageBeforeId) return
+    const container = messagesContainerRef.current
+    const previousHeight = container?.scrollHeight || 0
+    setMessageLoadingMore(true)
+    try {
+      const historyPage = await loadConversationMessages(activeId, messageBeforeId)
+      const { mappedMessages, recoveredPlanDrafts } = buildMessagesAndDraftsFromHistory(historyPage?.items || [], activeId)
+      if (mappedMessages.length > 0) {
+        suppressAutoScrollRef.current = true
+        setMessages(prev => [...mappedMessages, ...prev])
+      }
+      if (Object.keys(recoveredPlanDrafts).length > 0) {
+        setPlanDrafts(prev => ({ ...recoveredPlanDrafts, ...prev }))
+      }
+      setMessageHasMore(Boolean(historyPage?.hasMore))
+      setMessageBeforeId(historyPage?.nextBeforeId ?? null)
+      requestAnimationFrame(() => {
+        const node = messagesContainerRef.current
+        if (!node) return
+        const nextHeight = node.scrollHeight
+        node.scrollTop = nextHeight - previousHeight + node.scrollTop
+        updateScrollToBottomVisibility(node)
+      })
+    } catch (err) {
+      setConversationError(err?.message || '加载更多消息失败')
+    } finally {
+      setMessageLoadingMore(false)
+    }
+  }, [buildMessagesAndDraftsFromHistory, loadConversationMessages, messageBeforeId, messageHasMore, messageLoadingMore, updateScrollToBottomVisibility])
+
+  const handleConversationListScroll = useCallback((event) => {
+    const target = event?.currentTarget
+    if (!target || !conversationHasMore || conversationListLoadingMore) return
+    const nearTop = target.scrollTop <= 24
+    if (nearTop) {
+      loadMoreConversations()
+    }
+  }, [conversationHasMore, conversationListLoadingMore, loadMoreConversations])
+
+  const handleMessagesScroll = useCallback((event) => {
+    const target = event?.currentTarget
+    if (!target) return
+    updateScrollToBottomVisibility(target)
+    if (!messageHasMore || messageLoadingMore) return
+    if (target.scrollTop <= 48) {
+      loadMoreMessages()
+    }
+  }, [loadMoreMessages, messageHasMore, messageLoadingMore, updateScrollToBottomVisibility])
 
   const loadToolCatalog = useCallback(async () => {
     setToolCatalogLoading(true)
@@ -3383,6 +4034,99 @@ function ChatInterface() {
   useEffect(() => {
     loadToolCatalog()
   }, [loadToolCatalog])
+
+  const getToolDisplayLabel = (tool) => String(tool?.tool_name || tool?.toolName || tool?.displayName || tool?.name || '').trim()
+  const normalizeToolToken = (text) => String(text || '').trim().toLowerCase()
+
+  // 解析输入框中的 @mention 上下文，仅用于辅助输入，不会强制触发技能调用。
+  const resolveMentionContext = (text, caretPosition) => {
+    const safeText = String(text || '')
+    const safeCaret = Number.isFinite(caretPosition) ? caretPosition : safeText.length
+    const head = safeText.slice(0, safeCaret)
+    // 支持在任意位置输入 @（句首/句中/句尾），只要光标前最后一段是未闭合的 @token 即触发候选。
+    const match = head.match(/@([^\s@]*)$/)
+    if (!match) return null
+    const atIndex = head.lastIndexOf('@')
+    if (atIndex < 0) return null
+    const query = match[1] || ''
+    return {
+      start: atIndex,
+      end: safeCaret,
+      query: query.trim()
+    }
+  }
+
+  const getMentionCandidates = () => {
+    if (!mentionOpen) return []
+    const keyword = String(mentionQuery || '').toLowerCase()
+    const scored = toolCatalog
+      .map((tool) => {
+        const name = String(tool?.name || '')
+        const displayName = String(tool?.displayName || '')
+        const toolName = String(tool?.tool_name || tool?.toolName || '')
+        const desc = String(tool?.description || '')
+        const corpus = `${name} ${displayName} ${toolName} ${desc}`.toLowerCase()
+        if (!keyword) return { tool, score: 1 }
+        if (name.toLowerCase().startsWith(keyword) || displayName.toLowerCase().startsWith(keyword) || toolName.toLowerCase().startsWith(keyword)) return { tool, score: 3 }
+        if (corpus.includes(keyword)) return { tool, score: 2 }
+        return null
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+    return scored.map(item => item.tool)
+  }
+
+  const mentionCandidates = getMentionCandidates()
+
+  const closeMention = () => {
+    setMentionOpen(false)
+    setMentionQuery('')
+    setMentionStart(-1)
+    setMentionEnd(-1)
+    setMentionIndex(0)
+  }
+
+  const applyMentionTool = (tool) => {
+    if (!tool || mentionStart < 0 || mentionEnd < mentionStart) return
+    const mentionText = `@${getToolDisplayLabel(tool) || tool.name}`
+    const nextInput = `${input.slice(0, mentionStart)}${mentionText} ${input.slice(mentionEnd)}`
+    setInput(nextInput)
+    closeMention()
+    requestAnimationFrame(() => {
+      const cursorPos = mentionStart + mentionText.length + 1
+      if (inputRef.current) {
+        inputRef.current.focus()
+        inputRef.current.selectionStart = cursorPos
+        inputRef.current.selectionEnd = cursorPos
+      }
+    })
+  }
+
+  // 仅当输入整体是“@技能名”时，触发直连技能调用；句中 @ 仍走语义判断。
+  const resolveStandaloneMentionTool = (text) => {
+    const raw = String(text || '').trim()
+    const match = raw.match(/^@\s*(.+?)\s*$/)
+    if (!match) return null
+    const mentionText = String(match[1] || '').trim()
+    if (!mentionText) return null
+    const target = normalizeToolToken(mentionText)
+    const exact = toolCatalog.find((tool) => {
+      const candidates = [
+        tool?.tool_name,
+        tool?.toolName,
+        tool?.displayName,
+        tool?.name,
+        tool?.tool_code,
+        tool?.toolCode
+      ]
+      return candidates
+        .map(item => normalizeToolToken(item))
+        .filter(Boolean)
+        .includes(target)
+    })
+    return exact || null
+  }
 
   const parseJsonSafe = (text, fallback = null) => {
     try {
@@ -3694,6 +4438,7 @@ function ChatInterface() {
       references: [],
       sourceTag: '',
       logicFlow: '',
+      skillHint: '',
       analysisPlan: null,
       analysisSteps: [],
       analysisSummary: null,
@@ -3830,6 +4575,7 @@ function ChatInterface() {
           const refs = normalizeRefs(payload)
           const logicFlow = normalizeLogicFlow(payload)
           const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          const skillHint = String(payload.skillHint || payload.skill_hint || '').trim()
           if (refs.length > 0) {
             assistantPayloadState.references = refs
           }
@@ -3838,6 +4584,9 @@ function ChatInterface() {
           }
           if (sourceTag) {
             assistantPayloadState.sourceTag = sourceTag
+          }
+          if (skillHint) {
+            assistantPayloadState.skillHint = skillHint
           }
           if (!delta && refs.length > 0 && !aiContent.trim()) {
             aiContent += buildReferenceOnlyNotice(refs)
@@ -3859,7 +4608,8 @@ function ChatInterface() {
             content: aiContent,
             references: refs.length > 0 ? refs : old.references,
             sourceTag: sourceTag || old.sourceTag,
-            logicFlow: logicFlow || old.logicFlow
+            logicFlow: logicFlow || old.logicFlow,
+            skillHint: skillHint || old.skillHint
           }))
           hasRenderableOutput = true
         }
@@ -3906,11 +4656,11 @@ function ChatInterface() {
         setConversationError('当前无可用会话，请先新建会话')
         return
       }
-      const conversationTitle = activeConversationTitle || String(tool?.displayName || tool.name).slice(0, 20)
+      const conversationTitle = activeConversationTitle || String(getToolDisplayLabel(tool) || tool?.name || '').slice(0, 20)
       const draft = await createToolDraft(
         conversationIdRef.current,
         tool.name,
-        tool.description || tool.displayName || tool.name
+        tool.description || getToolDisplayLabel(tool) || tool.name
       )
       const draftArgs = parseJsonSafe(draft?.draftArgs, {}) || {}
       if (draft?.toolCallId) {
@@ -3922,7 +4672,7 @@ function ChatInterface() {
           }
         }))
       }
-      const assistantContent = `已选择技能：${tool.displayName || tool.name}\n请填写参数并上传文件后执行。`
+      const assistantContent = `已选择技能：${getToolDisplayLabel(tool) || tool.name}\n请填写参数并上传文件后执行。`
       const assistantMsg = {
         role: 'assistant',
         content: assistantContent,
@@ -3946,6 +4696,7 @@ function ChatInterface() {
     const mergedInput = typeof presetInput === 'string' ? presetInput : input
     const finalInput = String(mergedInput || '').trim()
     if (!finalInput) return
+    closeMention()
 
     if (loading && abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -3959,6 +4710,56 @@ function ChatInterface() {
       setConversationError('当前无可用会话，请先新建会话')
       return
     }
+
+    const standaloneTool = resolveStandaloneMentionTool(finalInput)
+    if (standaloneTool?.name) {
+      const conversationTitle = activeConversationTitle || String(getToolDisplayLabel(standaloneTool) || standaloneTool.name).slice(0, 20)
+      const userMsg = { role: 'user', content: finalInput }
+      setMessages(prev => [...prev, userMsg])
+      setInput('')
+      try {
+        await saveConversationMessage(conversationIdRef.current, 'user', finalInput, conversationTitle)
+      } catch (persistErr) {
+        console.error('保存用户消息失败:', persistErr)
+      }
+      try {
+        const draft = await createToolDraft(
+          conversationIdRef.current,
+          standaloneTool.name,
+          `direct_mention:${getToolDisplayLabel(standaloneTool) || standaloneTool.name}`
+        )
+        const draftArgs = parseJsonSafe(draft?.draftArgs, {}) || {}
+        const presetForm = { args: draftArgs, files: [] }
+        if (draft?.toolCallId) {
+          setToolForms(prev => ({
+            ...prev,
+            [draft.toolCallId]: presetForm
+          }))
+        }
+        // 单独 @技能名：固定走直接调用；若技能要求文件则降级为“已选择技能，等待上传”。
+        if (draft?.toolSpec?.upload_required) {
+          const assistantContent = `已直接匹配技能：${getToolDisplayLabel(standaloneTool) || standaloneTool.name}\n该技能需要上传文件，请补充文件后点击“执行技能”。`
+          const assistantMsg = {
+            role: 'assistant',
+            content: assistantContent,
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            toolDraft: draft
+          }
+          setMessages(prev => [...prev, assistantMsg])
+          const payloadText = buildMessagePayloadForSave({
+            content: assistantContent,
+            toolDraft: draft
+          })
+          await saveConversationMessage(conversationIdRef.current, 'assistant', assistantContent, conversationTitle, payloadText)
+        } else {
+          await handleApproveTool(draft, presetForm)
+        }
+      } catch (err) {
+        setConversationError(err?.message || '直接调用技能失败')
+      }
+      return
+    }
+
     const conversationTitle = activeConversationTitle || finalInput.slice(0, 20)
     const userMsg = { role: 'user', content: finalInput }
     setMessages(prev => [...prev, userMsg])
@@ -3981,6 +4782,7 @@ function ChatInterface() {
       references: [],
       sourceTag: '',
       logicFlow: '',
+      skillHint: '',
       analysisPlan: null,
       analysisSteps: [],
       analysisSummary: null,
@@ -4112,6 +4914,7 @@ function ChatInterface() {
           const refs = normalizeRefs(payload)
           const logicFlow = normalizeLogicFlow(payload)
           const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          const skillHint = String(payload.skillHint || payload.skill_hint || '').trim()
           if (refs.length > 0) {
             assistantPayloadState.references = refs
           }
@@ -4121,7 +4924,10 @@ function ChatInterface() {
           if (sourceTag) {
             assistantPayloadState.sourceTag = sourceTag
           }
-          if (delta || refs.length > 0 || logicFlow) {
+          if (skillHint) {
+            assistantPayloadState.skillHint = skillHint
+          }
+          if (delta || refs.length > 0 || logicFlow || skillHint) {
             hasRenderableOutput = true
           }
           if (!delta && refs.length > 0 && !aiContent.trim()) {
@@ -4144,7 +4950,8 @@ function ChatInterface() {
             content: aiContent,
             references: refs.length > 0 ? refs : old.references,
             sourceTag: sourceTag || old.sourceTag,
-            logicFlow: logicFlow || old.logicFlow
+            logicFlow: logicFlow || old.logicFlow,
+            skillHint: skillHint || old.skillHint
           }))
         }
       })
@@ -4196,13 +5003,24 @@ function ChatInterface() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
+    setLoading(false)
     await loadConversationListAndMessages(targetConversationId)
   }
 
-  const handleStopGeneration = () => {
-    if (!loading || !abortControllerRef.current) return
-    abortControllerRef.current.abort()
-    setLoading(false)
+  const handleSendButtonClick = () => {
+    // 点击转圈按钮时，真正中断当前流式输出；若输入框有新内容则立即发起新问题。
+    if (loading) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      setLoading(false)
+      const nextPrompt = String(input || '').trim()
+      if (nextPrompt) {
+        handleSend(nextPrompt)
+      }
+      return
+    }
+    handleSend()
   }
 
   const handleStartRenameConversation = (item) => {
@@ -4276,9 +5094,9 @@ function ChatInterface() {
     }))
   }
 
-  const handleApproveTool = async (toolDraft) => {
+  const handleApproveTool = async (toolDraft, formOverride = null) => {
     const toolCallId = toolDraft.toolCallId
-    const form = toolForms[toolCallId] || { args: {}, files: [] }
+    const form = formOverride || toolForms[toolCallId] || { args: {}, files: [] }
     const files = form.files || []
     const args = form.args || {}
     if (toolDraft.toolSpec?.upload_required && files.length === 0) {
@@ -4292,7 +5110,8 @@ function ChatInterface() {
     const assistantPayloadState = {
       references: [],
       sourceTag: '',
-      logicFlow: ''
+      logicFlow: '',
+      skillHint: ''
     }
     try {
       for (const file of files) {
@@ -4340,6 +5159,7 @@ function ChatInterface() {
           const refs = normalizeRefs(payload)
           const logicFlow = normalizeLogicFlow(payload)
           const sourceTag = payload.sourceLabel || payload.source || (refs.length > 0 ? 'RAG检索' : '')
+          const skillHint = String(payload.skillHint || payload.skill_hint || '').trim()
           if (refs.length > 0) {
             assistantPayloadState.references = refs
           }
@@ -4348,6 +5168,9 @@ function ChatInterface() {
           }
           if (sourceTag) {
             assistantPayloadState.sourceTag = sourceTag
+          }
+          if (skillHint) {
+            assistantPayloadState.skillHint = skillHint
           }
           if (!delta && refs.length > 0 && !aiContent.trim()) {
             aiContent += buildReferenceOnlyNotice(refs)
@@ -4358,7 +5181,8 @@ function ChatInterface() {
             content: aiContent,
             references: refs.length > 0 ? refs : old.references,
             sourceTag: sourceTag || old.sourceTag,
-            logicFlow: logicFlow || old.logicFlow
+            logicFlow: logicFlow || old.logicFlow,
+            skillHint: skillHint || old.skillHint
           }))
         }
       })
@@ -4399,7 +5223,17 @@ function ChatInterface() {
             新建对话
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div
+          ref={conversationListRef}
+          onScroll={handleConversationListScroll}
+          className="flex-1 overflow-y-auto p-2 space-y-1"
+        >
+          {conversationListLoadingMore && (
+            <div className="px-2 py-1 text-[11px] text-slate-400 flex items-center gap-1">
+              <Loader2 size={12} className="animate-spin" />
+              加载更早会话...
+            </div>
+          )}
           {conversations.map((item) => {
             const active = item.id === conversationIdRef.current
             const renaming = renamingConversationId === item.id
@@ -4447,6 +5281,9 @@ function ChatInterface() {
                     >
                       {item.title || '未命名会话'}
                     </button>
+                    <span className="text-[10px] text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+                      {Math.max(0, Number(item.remainingDays || 0))}天
+                    </span>
                     <button
                       onClick={() => handleStartRenameConversation(item)}
                       disabled={conversationActionLoading}
@@ -4502,7 +5339,7 @@ function ChatInterface() {
                 className="w-full text-left px-2 py-1.5 rounded border border-slate-200 hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50"
               >
                 <div className="text-xs font-medium text-slate-700 truncate">
-                  {tool.displayName || tool.name}
+                  {getToolDisplayLabel(tool) || tool.name}
                 </div>
                 <div className="text-[10px] text-slate-500 truncate">
                   {manualDraftPending === tool.name ? '创建草稿中...' : (tool.description || tool.name)}
@@ -4513,15 +5350,18 @@ function ChatInterface() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col h-full shadow-sm bg-white">
+      <div className="relative flex-1 flex flex-col h-full shadow-sm bg-white">
         <div className="p-4 border-b bg-white/80 backdrop-blur z-10 sticky top-0">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-semibold text-slate-800 flex items-center gap-2">
               <Bot size={20} className="text-blue-500" />
               智能问答助手
             </h2>
-            <div className="text-xs text-slate-500">
-              {activeConversationTitle || '未命名会话'}
+            <div className="text-xs text-slate-500 flex items-center gap-2">
+              <span>{activeConversationTitle || '未命名会话'}</span>
+              <span className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[10px]">
+                保留{conversationRetentionDays}天
+              </span>
             </div>
           </div>
           {conversationError && (
@@ -4529,7 +5369,17 @@ function ChatInterface() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+        >
+          {messageLoadingMore && (
+            <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1">
+              <Loader2 size={12} className="animate-spin" />
+              加载更早消息...
+            </div>
+          )}
           {messages.map((msg, idx) => (
             <div key={idx} className={cn(
               "flex gap-4",
@@ -4856,28 +5706,45 @@ function ChatInterface() {
                   let rawContent = msg.content || '';
                   rawContent = rawContent.replace(/[\r\n]+(?=\s*\[(?:ID:\s*)?\d+\])/g, ' ');
 
-                  let thought = null;
                   let answer = rawContent;
-                  const start = answer.indexOf('<think>');
-                  const end = answer.indexOf('</think>');
-                  if (start !== -1 && end > start) {
-                    thought = answer.substring(start + 7, end);
-                    answer = answer.substring(0, start) + answer.substring(end + 8);
-                  } else if (start !== -1 && msg.isStreaming) {
-                    thought = answer.substring(start + 7);
-                    answer = answer.substring(0, start);
-                  } else if (start !== -1) {
-                    answer = answer.replace('<think>', '')
-                  } else if (end !== -1) {
-                    answer = answer.replace('</think>', '')
+                  const thoughtParts = []
+                  answer = answer.replace(/<think>([\s\S]*?)<\/think>/g, (_, part) => {
+                    const text = String(part || '').trim()
+                    if (text) {
+                      thoughtParts.push(text)
+                    }
+                    return ''
+                  })
+                  const start = answer.indexOf('<think>')
+                  const end = answer.indexOf('</think>')
+                  if (thoughtParts.length === 0 && start !== -1 && msg.isStreaming) {
+                    const streamingThought = answer.substring(start + 7).trim()
+                    if (streamingThought) {
+                      thoughtParts.push(streamingThought)
+                    }
+                    answer = answer.substring(0, start)
+                  } else if (thoughtParts.length === 0 && start === -1 && end > 0) {
+                    // 兼容只有 </think> 没有 <think> 的返回，避免思考内容丢失。
+                    const inferredThought = answer.substring(0, end).trim()
+                    if (inferredThought) {
+                      thoughtParts.push(inferredThought)
+                    }
+                    answer = answer.substring(end + 8)
                   }
                   answer = answer.replace(/<\/?think>/g, '')
+                  const thought = thoughtParts.length > 0 ? thoughtParts.join('\n\n') : null
 
                   return (
                     <>
                       {msg.sourceTag && (
                         <div className="mb-2 inline-flex px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700">
                           来源：{msg.sourceTag}
+                        </div>
+                      )}
+                      {msg.skillHint && (
+                        <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2">
+                          <div className="text-[11px] font-semibold text-indigo-700 mb-1">相关技能</div>
+                          <div className="text-xs text-indigo-800 whitespace-pre-wrap">{msg.skillHint}</div>
                         </div>
                       )}
                       {msg.logicFlow && (
@@ -4950,6 +5817,17 @@ function ChatInterface() {
           ))}
           <div ref={messagesEndRef} />
         </div>
+
+        {showScrollToBottom && (
+          <button
+            onClick={handleScrollToBottom}
+            className="absolute left-1/2 -translate-x-1/2 bottom-28 z-20 inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-200 bg-white/95 shadow hover:bg-slate-50 text-xs text-slate-700"
+            title="回到底部"
+          >
+            <ChevronDown size={14} />
+            回到底部
+          </button>
+        )}
         
         {viewingRef && (
           <SourceViewer 
@@ -4973,36 +5851,86 @@ function ChatInterface() {
           </div>
           <div className="relative">
             <textarea
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                const nextValue = e.target.value
+                setInput(nextValue)
+                const ctx = resolveMentionContext(nextValue, e.target.selectionStart ?? nextValue.length)
+                if (!ctx) {
+                  closeMention()
+                  return
+                }
+                setMentionOpen(true)
+                setMentionQuery(ctx.query)
+                setMentionStart(ctx.start)
+                setMentionEnd(ctx.end)
+                setMentionIndex(0)
+              }}
               onKeyDown={(e) => {
+                if (mentionOpen && mentionCandidates.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setMentionIndex(prev => (prev + 1) % mentionCandidates.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setMentionIndex(prev => (prev - 1 + mentionCandidates.length) % mentionCandidates.length)
+                    return
+                  }
+                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                    e.preventDefault()
+                    applyMentionTool(mentionCandidates[mentionIndex] || mentionCandidates[0])
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    closeMention()
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   handleSend()
                 }
               }}
+              onBlur={() => {
+                setTimeout(() => closeMention(), 120)
+              }}
               placeholder="请输入您的问题..."
               className="w-full pl-4 pr-12 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-[56px] text-sm"
               disabled={conversationLoading}
             />
+            {mentionOpen && mentionCandidates.length > 0 && (
+              <div className="absolute left-0 right-14 bottom-[64px] rounded-lg border border-slate-200 bg-white shadow-lg z-20 max-h-56 overflow-y-auto">
+                {mentionCandidates.map((tool, idx) => (
+                  <button
+                    key={tool.name || `${tool.displayName}-${idx}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      applyMentionTool(tool)
+                    }}
+                    className={cn(
+                      'w-full text-left px-3 py-2 border-b last:border-b-0',
+                      idx === mentionIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'
+                    )}
+                  >
+                    <div className="text-xs font-medium">{getToolDisplayLabel(tool) || tool.name}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{tool.description || tool.name}</div>
+                  </button>
+                ))}
+              </div>
+            )}
             <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() || conversationLoading}
+              onClick={handleSendButtonClick}
+              disabled={conversationLoading || (!loading && !input.trim())}
               className="absolute right-2 top-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
             >
               {(loading || conversationLoading) ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>
-          {loading && (
-            <div className="mt-2 flex justify-end">
-              <button
-                onClick={handleStopGeneration}
-                className="px-3 py-1.5 text-xs rounded border border-rose-300 text-rose-600 hover:bg-rose-50"
-              >
-                中断生成
-              </button>
-            </div>
-          )}
+          <p className="text-[11px] text-slate-400 mt-1">输入 `@` 可选择技能名称（上下键选择，Enter/Tab 插入），是否调用由模型根据语义自主判断。</p>
           <p className="text-center text-xs text-slate-400 mt-2">
             AI 生成内容仅供参考，请以原始文档为准。
           </p>

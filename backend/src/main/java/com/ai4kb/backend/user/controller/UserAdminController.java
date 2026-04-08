@@ -1,7 +1,7 @@
 package com.ai4kb.backend.user.controller;
 
-import com.ai4kb.backend.engine.entity.RouteSample;
 import com.ai4kb.backend.engine.service.RouteSampleService;
+import com.ai4kb.backend.engine.entity.RouteSample;
 import com.ai4kb.backend.user.auth.AuthContextHolder;
 import com.ai4kb.backend.user.auth.AuthenticatedUser;
 import com.ai4kb.backend.user.auth.PasswordCodecService;
@@ -27,7 +27,10 @@ import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -269,17 +272,82 @@ public class UserAdminController {
     }
 
     @GetMapping("/route-samples")
-    public List<RouteSample> listRouteSamples(@RequestParam(defaultValue = "100") int limit,
-                                              @RequestParam(required = false) Long userId,
-                                              @RequestParam(required = false) String source) {
+    public Map<String, Object> listRouteSamples(@RequestParam(defaultValue = "1") int page,
+                                                @RequestParam(defaultValue = "20") int pageSize,
+                                                @RequestParam(required = false) Long userId,
+                                                @RequestParam(required = false) String username,
+                                                @RequestParam(required = false) String source,
+                                                @RequestParam(required = false) String chosenRoute,
+                                                @RequestParam(required = false) String startTime,
+                                                @RequestParam(required = false) String endTime,
+                                                @RequestParam(required = false) String queryKeyword) {
         requireSuperAdminUser();
-        return routeSampleService.listSamples(limit, userId, source);
+        Long effectiveUserId = userId;
+        String normalizedUsername = username == null ? "" : username.trim();
+        if (!normalizedUsername.isEmpty()) {
+            User targetUser = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                    .eq(User::getUsername, normalizedUsername)
+                    .last("limit 1"));
+            if (targetUser == null) {
+                return Map.of(
+                        "items", List.of(),
+                        "total", 0,
+                        "page", Math.max(page, 1),
+                        "page_size", Math.max(1, Math.min(pageSize, 100)),
+                        "has_more", false
+                );
+            }
+            effectiveUserId = targetUser.getId();
+        }
+        RouteSampleService.RouteSampleQuery query = new RouteSampleService.RouteSampleQuery(
+                page,
+                pageSize,
+                effectiveUserId,
+                source,
+                chosenRoute,
+                parseDateTime(startTime, false),
+                parseDateTime(endTime, true),
+                queryKeyword
+        );
+        RouteSampleService.RouteSamplePageResult result = routeSampleService.pageSamples(query);
+        List<RouteSample> items = result.items() == null ? List.of() : result.items();
+        Set<Long> userIds = items.stream()
+                .map(RouteSample::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> usernameMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, userIds));
+            for (User item : users) {
+                if (item == null || item.getId() == null) {
+                    continue;
+                }
+                usernameMap.put(item.getId(), item.getUsername());
+            }
+        }
+        items.forEach(sample -> sample.setUsername(usernameMap.getOrDefault(sample.getUserId(), "-")));
+        return Map.of(
+                "items", items,
+                "total", result.total(),
+                "page", result.page(),
+                "page_size", result.pageSize(),
+                "has_more", result.hasMore()
+        );
     }
 
     @GetMapping("/route-samples/sources")
     public List<String> listRouteSampleSources() {
         requireSuperAdminUser();
         return routeSampleService.listSources();
+    }
+
+    @GetMapping("/route-samples/options")
+    public Map<String, Object> listRouteSampleOptions() {
+        requireSuperAdminUser();
+        return Map.of(
+                "sources", routeSampleService.listSources(),
+                "routes", routeSampleService.listRoutes()
+        );
     }
 
     @GetMapping("/super/ownership-overview")
@@ -580,6 +648,23 @@ public class UserAdminController {
             throw new RuntimeException("仅 super_admin 可执行该操作");
         }
         return user;
+    }
+
+    private LocalDateTime parseDateTime(String raw, boolean endOfDayIfDateOnly) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String text = raw.trim();
+        try {
+            return LocalDateTime.parse(text);
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            LocalDate date = LocalDate.parse(text);
+            return endOfDayIfDateOnly ? date.atTime(LocalTime.MAX) : date.atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+        }
+        return null;
     }
 
     @ResponseStatus(HttpStatus.BAD_REQUEST)

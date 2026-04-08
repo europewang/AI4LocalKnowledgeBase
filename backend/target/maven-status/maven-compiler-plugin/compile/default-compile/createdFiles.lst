@@ -1,4 +1,5 @@
 com/ai4kb/backend/engine/model/ToolCallDraft.class
+com/ai4kb/backend/engine/service/RouteSampleService$RouteSamplePageResult.class
 com/ai4kb/backend/user/auth/AuthInterceptor.class
 com/ai4kb/backend/user/controller/UserConversationController$CreateConversationRequest.class
 com/ai4kb/backend/user/controller/UserAdminController$GrantSkillPermissionRequest.class
@@ -7,6 +8,7 @@ com/ai4kb/backend/engine/model/openai/OpenAiChatRequest$Tool$ToolBuilder.class
 com/ai4kb/backend/engine/model/openai/OpenAiChatResponse$Message.class
 com/ai4kb/backend/skill/model/ToolExecutionResult.class
 com/ai4kb/backend/user/entity/Permission.class
+com/ai4kb/backend/user/service/UserConversationService$ConversationPageResult.class
 com/ai4kb/backend/engine/mapper/RouteSampleMapper.class
 com/ai4kb/backend/engine/model/Message$ToolCall.class
 com/ai4kb/backend/user/controller/UserConversationController.class
@@ -15,6 +17,7 @@ com/ai4kb/backend/skill/model/SkillFileRecord$SkillFileRecordBuilder.class
 com/ai4kb/backend/skill/service/ToolFileStorageService.class
 com/ai4kb/backend/skill/model/ToolExecutionRequest$ToolExecutionRequestBuilder.class
 com/ai4kb/backend/rag/controller/ChatController.class
+com/ai4kb/backend/engine/service/RouteSampleService$RouteSampleQuery.class
 com/ai4kb/backend/user/service/AuthService$LoginResult$LoginResultBuilder.class
 com/ai4kb/backend/skill/executor/SkillExecutor.class
 com/ai4kb/backend/engine/model/openai/OpenAiChatResponse$ToolCall.class
@@ -90,6 +93,7 @@ com/ai4kb/backend/engine/service/EngineOrchestrator.class
 com/ai4kb/backend/user/entity/UserConversationMessage.class
 com/ai4kb/backend/engine/mapper/ToolResultMapper.class
 com/ai4kb/backend/engine/model/Message.class
+com/ai4kb/backend/user/service/UserConversationService$MessagePageResult.class
 com/ai4kb/backend/skill/model/ToolSpec$ToolSpecBuilder.class
 com/ai4kb/backend/engine/model/openai/OpenAiChatRequest$Tool.class
 com/ai4kb/backend/engine/service/EngineOrchestrator$RouteDecision.class
@@ -100,7 +104,9 @@ com/ai4kb/backend/skill/model/ToolExecutionResult$GeneratedFile.class
 com/ai4kb/backend/user/mapper/UserConversationMapper.class
 com/ai4kb/backend/engine/model/openai/OpenAiChatRequest$OpenAiChatRequestBuilder.class
 com/ai4kb/backend/rag/processor/ChatProcessor.class
+com/ai4kb/backend/skill/service/DynamicSkillAuditService$AuditFilterOptions.class
 com/ai4kb/backend/user/controller/UserAdminController$ForbiddenException.class
+com/ai4kb/backend/skill/service/DynamicSkillAuditService$AuditQuery.class
 com/ai4kb/backend/user/controller/UserConversationController$SaveMessageRequest.class
 com/ai4kb/backend/user/controller/AuthController$LoginRequest.class
 com/ai4kb/backend/user/entity/UserConversation.class

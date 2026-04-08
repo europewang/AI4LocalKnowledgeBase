@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.List;
+import java.util.Map;
 
 class AdminControllerRouteSampleTest {
 
@@ -48,13 +49,25 @@ class AdminControllerRouteSampleTest {
         RouteSample sample = new RouteSample();
         sample.setConversationId("c-admin-1");
         sample.setSource("PLANNER_ONLY");
-        Mockito.when(routeSampleService.listSamples(50, 1L, "PLANNER_ONLY")).thenReturn(List.of(sample));
+        RouteSampleService.RouteSamplePageResult pageResult =
+                new RouteSampleService.RouteSamplePageResult(List.of(sample), 1L, 1, 20, false);
+        Mockito.when(routeSampleService.pageSamples(Mockito.any())).thenReturn(pageResult);
 
-        List<RouteSample> result = controller.listRouteSamples(50, 1L, "PLANNER_ONLY");
+        Map<String, Object> result = controller.listRouteSamples(
+                1,
+                20,
+                1L,
+                null,
+                "PLANNER_ONLY",
+                "SKILL",
+                "2026-04-01",
+                "2026-04-08",
+                "面积"
+        );
 
-        Assertions.assertEquals(1, result.size());
-        Assertions.assertEquals("c-admin-1", result.get(0).getConversationId());
-        Mockito.verify(routeSampleService, Mockito.times(1)).listSamples(50, 1L, "PLANNER_ONLY");
+        Assertions.assertEquals(1L, result.get("total"));
+        Assertions.assertTrue(result.containsKey("items"));
+        Mockito.verify(routeSampleService, Mockito.times(1)).pageSamples(Mockito.any());
         AuthContextHolder.clear();
     }
 
@@ -87,7 +100,8 @@ class AdminControllerRouteSampleTest {
         UserAdminController controller = buildController(ragFlowClient, userMapper, permissionMapper, routeSampleService, passwordCodecService);
         AuthContextHolder.set(AuthenticatedUser.builder().userId(2L).username("admin").role("admin").build());
 
-        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, () -> controller.listRouteSamples(10, null, null));
+        RuntimeException ex = Assertions.assertThrows(RuntimeException.class, () -> controller.listRouteSamples(
+                1, 20, null, null, null, null, null, null, null));
 
         Assertions.assertEquals("仅 super_admin 可执行该操作", ex.getMessage());
         AuthContextHolder.clear();

@@ -24,6 +24,7 @@
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/model/openai/OpenAiChatRequest.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/mapper/DynamicSkillRegistryMapper.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/entity/UserConversation.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/OpenClawManagedWorkflowService.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/controller/ChatController.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/executor/impl/CadIndicatorVerificationSkillExecutor.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/EngineOrchestrator.java
@@ -32,11 +33,13 @@
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/entity/DynamicSkillRegistry.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/model/SkillFileRecord.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/service/ToolFileStorageService.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/audit/task/AuditDataCleanupTask.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/RouteSampleService.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/model/Message.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/rag/processor/impl/RagDirectProcessor.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/UserMapper.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/impl/cad_text_extractor/CadTextExtractorSkillAutoRegisterRunner.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/OpenClawBrainClient.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/mapper/PermissionMapper.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/service/DynamicSkillAuditService.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/controller/SkillProtocolAdminController.java
@@ -45,7 +48,9 @@
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/auth/PasswordCodecService.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/mapper/ToolResultMapper.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/model/openai/OpenAiChatResponse.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/service/BrainClient.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/controller/UserConversationController.java
+/home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/config/BrainOpenClawProperties.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/skill/service/DynamicSkillProtocolClient.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/engine/config/LlmConfigProperties.java
 /home/ubutnu/code/AI4LocalKnowledgeBase/backend/src/main/java/com/ai4kb/backend/user/entity/User.java

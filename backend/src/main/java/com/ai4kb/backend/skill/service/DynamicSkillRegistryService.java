@@ -154,6 +154,9 @@ public class DynamicSkillRegistryService {
         Map<String, Object> schema = parseJsonMap(registry.getParametersSchema());
         return ToolSpec.builder()
                 .name(registry.getToolCode())
+                // 前端快捷技能区优先展示 toolName/displayName，避免回退到 tool_code。
+                .toolName(defaultString(registry.getToolName(), registry.getToolCode()))
+                .displayName(defaultString(registry.getToolName(), registry.getToolCode()))
                 .description(defaultString(registry.getDescription(), registry.getToolName()))
                 .triggerKeywords(triggerKeywords)
                 .inputMode(defaultString(registry.getInputMode(), "PARAMS_ONLY"))

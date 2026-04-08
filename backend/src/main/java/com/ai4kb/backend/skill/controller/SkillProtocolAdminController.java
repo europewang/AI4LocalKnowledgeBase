@@ -10,6 +10,10 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,10 +100,47 @@ public class SkillProtocolAdminController {
      * 查询技能调用审计。
      */
     @GetMapping("/audit")
-    public List<Map<String, Object>> listAudit(@RequestParam(defaultValue = "50") int limit) {
+    public Map<String, Object> listAudit(@RequestParam(defaultValue = "1") int page,
+                                         @RequestParam(defaultValue = "20") int pageSize,
+                                         @RequestParam(required = false) String startTime,
+                                         @RequestParam(required = false) String endTime,
+                                         @RequestParam(required = false) String toolCallId,
+                                         @RequestParam(required = false) String username,
+                                         @RequestParam(required = false) Long userId,
+                                         @RequestParam(required = false) String status,
+                                         @RequestParam(required = false) String toolCode) {
         requireAdminLikeUser();
-        List<DynamicSkillCallAudit> audits = dynamicSkillAuditService.listRecent(limit);
-        return audits.stream().map(this::toAuditItem).toList();
+        DynamicSkillAuditService.AuditQuery query = new DynamicSkillAuditService.AuditQuery(
+                page,
+                pageSize,
+                parseDateTime(startTime, false),
+                parseDateTime(endTime, true),
+                toolCallId,
+                username,
+                userId,
+                status,
+                toolCode
+        );
+        DynamicSkillAuditService.AuditPageResult result = dynamicSkillAuditService.pageAudits(query);
+        return Map.of(
+                "items", result.items().stream().map(this::toAuditItem).toList(),
+                "total", result.total(),
+                "page", result.page(),
+                "page_size", result.pageSize(),
+                "has_more", result.hasMore()
+        );
+    }
+
+    @GetMapping("/audit/options")
+    public Map<String, Object> listAuditOptions(@RequestParam(defaultValue = "300") int cap) {
+        requireAdminLikeUser();
+        DynamicSkillAuditService.AuditFilterOptions options = dynamicSkillAuditService.listFilterOptions(cap);
+        return Map.of(
+                "statuses", options.statuses(),
+                "usernames", options.usernames(),
+                "tool_call_ids", options.toolCallIds(),
+                "tool_codes", options.toolCodes()
+        );
     }
 
     private Map<String, Object> toSkillItem(DynamicSkillRegistry skill) {
@@ -112,6 +153,14 @@ public class SkillProtocolAdminController {
         item.put("invoke_url", skill.getInvokeUrl());
         item.put("manifest_url", skill.getManifestUrl());
         item.put("health_url", skill.getHealthUrl());
+        item.put("trigger_keywords", skill.getTriggerKeywords());
+        item.put("input_mode", skill.getInputMode());
+        item.put("output_mode", skill.getOutputMode());
+        item.put("upload_required", skill.getUploadRequired());
+        item.put("accepted_file_types", skill.getAcceptedFileTypes());
+        item.put("max_files", skill.getMaxFiles());
+        item.put("parameters_schema", skill.getParametersSchema());
+        item.put("draft_args_template", skill.getDraftArgsTemplate());
         item.put("status", skill.getStatus());
         item.put("version", skill.getVersion());
         item.put("updated_at", skill.getUpdatedAt());
@@ -146,6 +195,23 @@ public class SkillProtocolAdminController {
             throw new IllegalStateException("仅 admin/super_admin 可执行该操作");
         }
         return user;
+    }
+
+    private LocalDateTime parseDateTime(String raw, boolean endOfDayIfDateOnly) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String text = raw.trim();
+        try {
+            return LocalDateTime.parse(text);
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            LocalDate date = LocalDate.parse(text);
+            return endOfDayIfDateOnly ? date.atTime(LocalTime.MAX) : date.atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+        }
+        return null;
     }
 
     @Data

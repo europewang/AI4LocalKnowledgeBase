@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -27,15 +28,33 @@ public class UserConversationController {
     }
 
     @GetMapping
-    public List<UserConversation> listConversations() {
+    public Map<String, Object> listConversations(@RequestParam(defaultValue = "1") int page,
+                                                 @RequestParam(defaultValue = "50") int pageSize) {
         AuthenticatedUser user = requireAuthenticated();
-        return userConversationService.listUserConversations(user.getUserId());
+        UserConversationService.ConversationPageResult result = userConversationService.listUserConversations(user.getUserId(), page, pageSize);
+        return Map.of(
+                "items", result.items(),
+                "total", result.total(),
+                "page", result.page(),
+                "page_size", result.pageSize(),
+                "has_more", result.hasMore(),
+                "retention_days", result.retentionDays()
+        );
     }
 
     @GetMapping("/{conversationId}/messages")
-    public List<UserConversationMessage> listMessages(@PathVariable String conversationId) {
+    public Map<String, Object> listMessages(@PathVariable String conversationId,
+                                            @RequestParam(required = false) Long beforeId,
+                                            @RequestParam(defaultValue = "50") int limit) {
         AuthenticatedUser user = requireAuthenticated();
-        return userConversationService.listConversationMessages(user.getUserId(), conversationId);
+        UserConversationService.MessagePageResult result =
+                userConversationService.listConversationMessages(user.getUserId(), conversationId, beforeId, limit);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("items", result.items());
+        response.put("has_more", result.hasMore());
+        response.put("next_before_id", result.nextBeforeId());
+        response.put("page_size", result.pageSize());
+        return response;
     }
 
     @PostMapping("/{conversationId}/messages")

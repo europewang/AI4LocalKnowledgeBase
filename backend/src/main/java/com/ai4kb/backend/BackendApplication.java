@@ -1,6 +1,7 @@
 package com.ai4kb.backend;
 
 import com.ai4kb.backend.engine.config.LlmConfigProperties;
+import com.ai4kb.backend.engine.config.BrainOpenClawProperties;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,7 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @SpringBootApplication
 @MapperScan("com.ai4kb.backend.**.mapper")
-@EnableConfigurationProperties(LlmConfigProperties.class)
+@EnableConfigurationProperties({LlmConfigProperties.class, BrainOpenClawProperties.class})
 /**
  * Backend 应用启动入口。
  * 负责装配 Spring Boot 上下文、Mapper 扫描与 LLM 配置绑定。

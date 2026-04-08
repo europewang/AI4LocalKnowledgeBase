@@ -1,3 +1,4 @@
+#sudo -n docker compose -f deploy/docker-compose-xinference.yml up -d
 import requests
 import json
 import sys

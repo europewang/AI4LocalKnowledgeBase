@@ -1,6 +1,7 @@
 package com.ai4kb.backend.user.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
@@ -15,4 +16,10 @@ public class UserConversation {
     private String title;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    @TableField(exist = false)
+    private Integer remainingDays;
+
+    @TableField(exist = false)
+    private LocalDateTime expireAt;
 }
