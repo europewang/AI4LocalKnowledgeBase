@@ -1110,3 +1110,23 @@
 **结论**:
 - 超级管理员查看“管理员总览”时，可直接在普通用户卡片的统计行看到其上层管理员信息。
 >>>>>>> 58312d0 (修正了管理员职责)
+
+## 2026-04-09: 远端仓库校正后重新拉取并完成冲突重放
+**操作人**: AI Assistant (Trae IDE)
+**操作内容**:
+1. 校验远端：确认 `origin` 已指向 `https://github.com/europewang/AI4LocalKnowledgeBase.git`。
+2. 执行拉取：`git fetch origin && git pull --rebase --autostash origin main`。
+3. 冲突处理策略（按用户确认“保留本地改动并合并”）：
+   - 源码与文档冲突文件优先采用本地提交版本（rebase 语义下使用 `--theirs`）；
+   - 构建产物冲突（`backend/target`、`frontend/dist/index.html`）优先采用远端版本（rebase 语义下使用 `--ours`）。
+4. 完成重放：`GIT_EDITOR=true git rebase --continue`，rebase 成功结束。
+
+**结果状态**:
+- 分支状态：`main...origin/main [ahead 1]`。
+- 工作区仍有未提交修改（来自当前本地工作）：
+  - `backend/src/main/java/com/ai4kb/backend/user/controller/UserAdminController.java`
+  - `frontend/src/App.jsx`
+  - `cloai-code`（子模块工作区变化）
+
+**结论**:
+- 已成功从正确仓库重新拉取并完成冲突处理，当前可继续选择“提交并推送”或“继续本地修改后再推送”。

@@ -3548,9 +3548,6 @@ function SuperAdminOverview({ role }) {
               </div>
               <div className="text-xs text-slate-600">
                 知识库 {subject.ownedDatasetCount || 0} · 授权记录 {subject.totalGrantedPermissionCount || 0} · 用户总览 {subject.userOverviewCount || 0} · 会话 {subject.conversationOverviewCount || 0} · 对话记录 {subject.conversationRecordCount || 0}
-                {subjectRole === 'user' && (
-                  <> · 上层管理员 {subject.managerUsername || '-'}</>
-                )}
               </div>
             </div>
           </div>

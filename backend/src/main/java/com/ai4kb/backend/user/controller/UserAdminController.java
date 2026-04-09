@@ -517,15 +517,6 @@ public class UserAdminController {
                                                               Map<String, Integer> datasetDocCountMap,
                                                               Map<String, List<Map<String, Object>>> datasetGrantedUsersMap) {
         List<Map<String, Object>> items = new ArrayList<>();
-        Set<Long> managerIds = users.stream()
-                .map(User::getManagerUserId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, String> managerNameMap = managerIds.isEmpty()
-                ? Map.of()
-                : userMapper.selectBatchIds(managerIds).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(User::getId, User::getUsername, (a, b) -> a));
         for (User user : users) {
             List<Permission> ownedPermissions = ownerPermissionMap.getOrDefault(user.getId(), List.of());
             List<Map<String, Object>> ownedDatasets = new ArrayList<>();
@@ -595,8 +586,6 @@ public class UserAdminController {
             item.put("userId", user.getId());
             item.put("username", user.getUsername());
             item.put("role", user.getRole());
-            item.put("managerUserId", user.getManagerUserId());
-            item.put("managerUsername", managerNameMap.getOrDefault(user.getManagerUserId(), null));
             // 兼容历史前端字段，避免老逻辑读取失败。
             item.put("adminUserId", user.getId());
             item.put("adminUsername", user.getUsername());
