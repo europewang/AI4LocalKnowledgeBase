@@ -107,6 +107,9 @@ public class DynamicSkillAuditService {
         if (safeQuery.endTime() != null) {
             wrapper.le(DynamicSkillCallAudit::getCreatedAt, safeQuery.endTime());
         }
+        if (safeQuery.scopedUserIds() != null && !safeQuery.scopedUserIds().isEmpty()) {
+            wrapper.in(DynamicSkillCallAudit::getUserId, safeQuery.scopedUserIds());
+        }
         if (safeQuery.userId() != null) {
             wrapper.eq(DynamicSkillCallAudit::getUserId, safeQuery.userId());
         }
@@ -136,11 +139,15 @@ public class DynamicSkillAuditService {
     }
 
     public AuditFilterOptions listFilterOptions(int cap) {
+        return listFilterOptions(cap, null);
+    }
+
+    public AuditFilterOptions listFilterOptions(int cap, java.util.Collection<Long> scopedUserIds) {
         int safeCap = Math.max(20, Math.min(cap, 1000));
-        List<String> statuses = listDistinctStrings("status", safeCap, true);
-        List<String> usernames = listDistinctStrings("username", safeCap, false);
-        List<String> toolCallIds = listDistinctStrings("tool_call_id", safeCap, false);
-        List<String> toolCodes = listDistinctStrings("tool_code", safeCap, false);
+        List<String> statuses = listDistinctStrings("status", safeCap, true, scopedUserIds);
+        List<String> usernames = listDistinctStrings("username", safeCap, false, scopedUserIds);
+        List<String> toolCallIds = listDistinctStrings("tool_call_id", safeCap, false, scopedUserIds);
+        List<String> toolCodes = listDistinctStrings("tool_code", safeCap, false, scopedUserIds);
         return new AuditFilterOptions(statuses, usernames, toolCallIds, toolCodes);
     }
 
@@ -155,12 +162,18 @@ public class DynamicSkillAuditService {
                 .lt(DynamicSkillCallAudit::getCreatedAt, cutoff));
     }
 
-    private List<String> listDistinctStrings(String columnName, int cap, boolean upperCase) {
+    private List<String> listDistinctStrings(String columnName,
+                                             int cap,
+                                             boolean upperCase,
+                                             java.util.Collection<Long> scopedUserIds) {
         QueryWrapper<DynamicSkillCallAudit> wrapper = new QueryWrapper<DynamicSkillCallAudit>()
                 .select("distinct " + columnName)
                 .isNotNull(columnName)
                 .ne(columnName, "")
                 .last("limit " + cap);
+        if (scopedUserIds != null && !scopedUserIds.isEmpty()) {
+            wrapper.in("user_id", scopedUserIds);
+        }
         List<Object> values = dynamicSkillCallAuditMapper.selectObjs(wrapper);
         List<String> result = new ArrayList<>();
         for (Object value : values) {
@@ -185,10 +198,11 @@ public class DynamicSkillAuditService {
             String username,
             Long userId,
             String status,
-            String toolCode
+            String toolCode,
+            java.util.Collection<Long> scopedUserIds
     ) {
         public AuditQuery() {
-            this(1, 20, null, null, null, null, null, null, null);
+            this(1, 20, null, null, null, null, null, null, null, null);
         }
     }
 

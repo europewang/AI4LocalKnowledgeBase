@@ -53,9 +53,9 @@ public class UserAdminController {
     @GetMapping("/datasets")
     public Mono<JsonNode> listDatasets(@RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "100") int pageSize) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
         return ragFlowClient.listDatasets(page, pageSize)
-                .map(this::appendDatasetCreator);
+                .map(node -> appendDatasetCreator(node, current));
     }
 
     @PostMapping("/datasets")
@@ -68,7 +68,7 @@ public class UserAdminController {
     @DeleteMapping("/datasets/{id}")
     public Mono<JsonNode> deleteDataset(@PathVariable String id) {
         AuthenticatedUser current = requireAdminLikeUser();
-        validateDatasetDeletePermission(current, id);
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.deleteDataset(id)
                 .doOnNext(result -> cleanupDatasetPermission(id));
     }
@@ -79,7 +79,7 @@ public class UserAdminController {
         List<String> ids = body.get("ids");
         if (ids != null) {
             for (String id : ids) {
-                validateDatasetDeletePermission(current, id);
+                validateDatasetManagePermission(current, id);
             }
         }
         return ragFlowClient.deleteDatasets(ids)
@@ -95,7 +95,8 @@ public class UserAdminController {
 
     @PutMapping("/datasets/{id}")
     public Mono<JsonNode> updateDataset(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         String name = (String) body.get("name");
         String description = (String) body.get("description");
         String language = (String) body.get("language");
@@ -108,32 +109,36 @@ public class UserAdminController {
     public Mono<JsonNode> listDocuments(@PathVariable String id,
                                         @RequestParam(defaultValue = "1") int page,
                                         @RequestParam(defaultValue = "100") int pageSize) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.listDocuments(id, page, pageSize);
     }
 
     @PostMapping(value = "/datasets/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<JsonNode> uploadDocument(@PathVariable String id, @RequestParam("file") MultipartFile file) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.uploadDocument(id, file);
     }
 
     @PostMapping("/datasets/{id}/documents/run")
     public Mono<JsonNode> runDocuments(@PathVariable String id, @RequestBody Map<String, List<String>> body) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.runDocuments(id, body.get("doc_ids"));
     }
 
     @DeleteMapping("/datasets/{id}/documents")
     public Mono<JsonNode> deleteDocuments(@PathVariable String id, @RequestBody Map<String, List<String>> body) {
         AuthenticatedUser current = requireAdminLikeUser();
-        validateDatasetDeletePermission(current, id);
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.deleteDocuments(id, body.get("ids"));
     }
 
     @PutMapping("/datasets/{id}/documents/{docId}")
     public Mono<JsonNode> updateDocument(@PathVariable String id, @PathVariable String docId, @RequestBody Map<String, String> body) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.updateDocument(id, docId, body.get("name"));
     }
 
@@ -142,7 +147,8 @@ public class UserAdminController {
                                      @PathVariable String docId,
                                      @RequestParam(defaultValue = "1") int page,
                                      @RequestParam(defaultValue = "100") int pageSize) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.listChunks(id, docId, page, pageSize);
     }
 
@@ -150,7 +156,8 @@ public class UserAdminController {
     public Mono<org.springframework.http.ResponseEntity<org.springframework.core.io.Resource>> getDocumentFile(
             @PathVariable String id,
             @PathVariable String docId) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateDatasetManagePermission(current, id);
         return ragFlowClient.getDocumentFile(id, docId)
                 .map(resource -> org.springframework.http.ResponseEntity.ok()
                         .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline")
@@ -159,8 +166,16 @@ public class UserAdminController {
 
     @GetMapping("/users")
     public List<User> listUsers() {
-        requireAdminLikeUser();
-        return userMapper.selectList(null);
+        AuthenticatedUser current = requireAdminLikeUser();
+        if ("super_admin".equalsIgnoreCase(current.getRole())) {
+            return userMapper.selectList(null);
+        }
+        List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .and(wrapper -> wrapper.eq(User::getId, current.getUserId())
+                        .or()
+                        .eq(User::getManagerUserId, current.getUserId()))
+                .orderByAsc(User::getId));
+        return users == null ? List.of() : users;
     }
 
     /**
@@ -189,11 +204,108 @@ public class UserAdminController {
         if (!isAdminLikeRole(current.getRole())) {
             throw new ForbiddenException("仅 admin/super_admin 可创建普通用户");
         }
-        User user = createUser(request, "user");
+        // 普通用户只能有一个直属管理员，这里在创建时直接固化 manager_user_id。
+        Long managerUserId = resolveNormalUserManagerId(current, request);
+        User user = createUser(request, "user", managerUserId);
         return Map.of(
                 "id", user.getId(),
                 "username", user.getUsername(),
-                "role", user.getRole()
+                "role", user.getRole(),
+                "manager_user_id", user.getManagerUserId()
+        );
+    }
+
+    /**
+     * 超级管理员将普通用户升级为管理员（不支持降级）。
+     */
+    @PostMapping("/users/{userId}/promote-admin")
+    public Map<String, Object> promoteToAdmin(@PathVariable Long userId) {
+        AuthenticatedUser current = requireSuperAdminUser();
+        User target = userMapper.selectById(userId);
+        if (target == null) {
+            throw new BadRequestException("目标用户不存在");
+        }
+        if ("super_admin".equalsIgnoreCase(target.getRole())) {
+            throw new BadRequestException("不能操作 super_admin 角色");
+        }
+        if ("admin".equalsIgnoreCase(target.getRole())) {
+            throw new BadRequestException("该用户已经是管理员，不能降级后再升级");
+        }
+        // 说明：升级后从“直属关系”脱离，manager_user_id 置空。
+        target.setRole("admin");
+        target.setManagerUserId(null);
+        userMapper.updateById(target);
+        return Map.of(
+                "status", "ok",
+                "id", target.getId(),
+                "username", target.getUsername(),
+                "role", target.getRole(),
+                "operator", current.getUsername()
+        );
+    }
+
+    /**
+     * 删除用户：用于“不可降级，只能删除后重建”的管理流程。
+     */
+    @DeleteMapping("/users/{userId}")
+    public Map<String, Object> deleteUser(@PathVariable Long userId) {
+        AuthenticatedUser current = requireAdminLikeUser();
+        User target = userMapper.selectById(userId);
+        if (target == null) {
+            throw new BadRequestException("目标用户不存在");
+        }
+        if ("super_admin".equalsIgnoreCase(target.getRole())) {
+            throw new ForbiddenException("禁止删除 super_admin");
+        }
+        if ("super_admin".equalsIgnoreCase(current.getRole())) {
+            if (Objects.equals(current.getUserId(), userId)) {
+                throw new ForbiddenException("不能删除当前登录的 super_admin");
+            }
+        } else {
+            if (!"user".equalsIgnoreCase(target.getRole()) || !Objects.equals(target.getManagerUserId(), current.getUserId())) {
+                throw new ForbiddenException("admin 仅可删除自己直属普通用户");
+            }
+        }
+        permissionMapper.delete(new LambdaQueryWrapper<Permission>().eq(Permission::getUserId, userId));
+        userMapper.deleteById(userId);
+        return Map.of("status", "ok", "deleted_user_id", userId);
+    }
+
+    /**
+     * 修改用户基础信息（用户名/密码）。
+     */
+    @PutMapping("/users/{userId}")
+    public Map<String, Object> updateUser(@PathVariable Long userId, @RequestBody UpdateUserRequest request) {
+        AuthenticatedUser current = requireAdminLikeUser();
+        User target = userMapper.selectById(userId);
+        if (target == null) {
+            throw new BadRequestException("目标用户不存在");
+        }
+        if ("super_admin".equalsIgnoreCase(target.getRole()) && !"super_admin".equalsIgnoreCase(current.getRole())) {
+            throw new ForbiddenException("仅 super_admin 可修改 super_admin 账号");
+        }
+        validateTargetUserInManageScope(current, target.getId());
+        String nextUsername = request.getUsername() == null ? "" : request.getUsername().trim();
+        String nextPassword = request.getPassword() == null ? "" : request.getPassword().trim();
+        if (nextUsername.isBlank() && nextPassword.isBlank()) {
+            throw new BadRequestException("username/password 不能同时为空");
+        }
+        if (!nextUsername.isBlank() && !nextUsername.equals(target.getUsername())) {
+            User existing = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, nextUsername));
+            if (existing != null && !Objects.equals(existing.getId(), target.getId())) {
+                throw new BadRequestException("用户名已存在");
+            }
+            target.setUsername(nextUsername);
+        }
+        if (!nextPassword.isBlank()) {
+            target.setPasswordHash(passwordCodecService.encode(nextPassword));
+        }
+        userMapper.updateById(target);
+        return Map.of(
+                "status", "ok",
+                "id", target.getId(),
+                "username", target.getUsername(),
+                "role", target.getRole()
         );
     }
 
@@ -202,6 +314,8 @@ public class UserAdminController {
      */
     @PostMapping("/permissions/datasets")
     public Map<String, String> grantDatasetPermission(@RequestBody GrantDatasetPermissionRequest request) {
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateTargetUserInManageScope(current, request.getTargetUserId());
         upsertPermission(request.getTargetUserId(), "DATASET", request.getDatasetId());
         return Collections.singletonMap("status", "ok");
     }
@@ -211,13 +325,15 @@ public class UserAdminController {
      */
     @PostMapping("/permissions/skills")
     public Map<String, String> grantSkillPermission(@RequestBody GrantSkillPermissionRequest request) {
+        AuthenticatedUser current = requireAdminLikeUser();
+        validateTargetUserInManageScope(current, request.getTargetUserId());
         upsertPermission(request.getTargetUserId(), "SKILL", request.getSkillCode());
         return Collections.singletonMap("status", "ok");
     }
 
     @PostMapping("/permission/sync")
     public Map<String, Object> syncPermissions(@RequestBody Map<String, Object> body) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
         String username = (String) body.get("username");
         List<String> datasetIds = (List<String>) body.get("dataset_ids");
         datasetIds = datasetIds == null ? List.of() : datasetIds;
@@ -225,6 +341,7 @@ public class UserAdminController {
         if (user == null) {
             throw new RuntimeException("User not found");
         }
+        validateTargetUserInManageScope(current, user.getId());
         List<Permission> currentPerms = permissionMapper.selectList(new LambdaQueryWrapper<Permission>()
                 .eq(Permission::getUserId, user.getId())
                 .eq(Permission::getResourceType, "DATASET"));
@@ -248,7 +365,7 @@ public class UserAdminController {
 
     @PostMapping("/permission/grant")
     public Map<String, String> grantPermission(@RequestBody Map<String, String> body) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
         String username = body.get("username");
         String resourceType = body.get("resource_type");
         String resourceId = body.get("resource_id");
@@ -256,17 +373,19 @@ public class UserAdminController {
         if (user == null) {
             throw new RuntimeException("User not found");
         }
+        validateTargetUserInManageScope(current, user.getId());
         upsertPermission(user.getId(), resourceType, resourceId);
         return Collections.singletonMap("status", "ok");
     }
 
     @GetMapping("/permission/{username}")
     public List<Permission> getUserPermissions(@PathVariable String username) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (user == null) {
             throw new RuntimeException("User not found");
         }
+        validateTargetUserInManageScope(current, user.getId());
         return permissionMapper.selectList(new LambdaQueryWrapper<Permission>()
                 .eq(Permission::getUserId, user.getId()));
     }
@@ -352,18 +471,63 @@ public class UserAdminController {
 
     @GetMapping("/super/ownership-overview")
     public Map<String, Object> superOwnershipOverview() {
-        requireSuperAdminUser();
-        List<User> admins = userMapper.selectList(new LambdaQueryWrapper<User>().eq(User::getRole, "admin"));
+        AuthenticatedUser current = requireAdminLikeUser();
+        boolean isSuperAdmin = "super_admin".equalsIgnoreCase(current.getRole());
+        List<User> admins = isSuperAdmin
+                ? userMapper.selectList(new LambdaQueryWrapper<User>().eq(User::getRole, "admin"))
+                : List.of();
+        List<User> normalUsers = isSuperAdmin
+                ? userMapper.selectList(new LambdaQueryWrapper<User>().eq(User::getRole, "user"))
+                : userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "user")
+                .eq(User::getManagerUserId, current.getUserId()));
         List<Permission> ownerPermissions = permissionMapper.selectList(new LambdaQueryWrapper<Permission>()
                 .eq(Permission::getResourceType, "DATASET_OWNER"));
-        Map<Long, List<Permission>> adminOwnedPermissionMap = ownerPermissions.stream()
+        Map<Long, List<Permission>> ownerPermissionMap = ownerPermissions.stream()
                 .collect(Collectors.groupingBy(Permission::getUserId));
         Map<String, String> datasetNameMap = loadDatasetNameMap();
         Map<String, Integer> datasetDocCountMap = new HashMap<>();
         Map<String, List<Map<String, Object>>> datasetGrantedUsersMap = loadDatasetGrantedUsersMap();
-        List<Map<String, Object>> adminItems = new ArrayList<>();
-        for (User admin : admins) {
-            List<Permission> ownedPermissions = adminOwnedPermissionMap.getOrDefault(admin.getId(), List.of());
+        // 统一构建“主体总览”，可复用于管理员与普通用户。
+        List<Map<String, Object>> adminItems = buildUserOverviewItems(
+                admins,
+                ownerPermissionMap,
+                datasetNameMap,
+                datasetDocCountMap,
+                datasetGrantedUsersMap
+        );
+        List<Map<String, Object>> userItems = buildUserOverviewItems(
+                normalUsers,
+                ownerPermissionMap,
+                datasetNameMap,
+                datasetDocCountMap,
+                datasetGrantedUsersMap
+        );
+        return Map.of(
+                "generatedAt", Instant.now().toString(),
+                "scopeRole", current.getRole(),
+                "admins", adminItems,
+                "users", userItems
+        );
+    }
+
+    private List<Map<String, Object>> buildUserOverviewItems(List<User> users,
+                                                              Map<Long, List<Permission>> ownerPermissionMap,
+                                                              Map<String, String> datasetNameMap,
+                                                              Map<String, Integer> datasetDocCountMap,
+                                                              Map<String, List<Map<String, Object>>> datasetGrantedUsersMap) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        Set<Long> managerIds = users.stream()
+                .map(User::getManagerUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> managerNameMap = managerIds.isEmpty()
+                ? Map.of()
+                : userMapper.selectBatchIds(managerIds).stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(User::getId, User::getUsername, (a, b) -> a));
+        for (User user : users) {
+            List<Permission> ownedPermissions = ownerPermissionMap.getOrDefault(user.getId(), List.of());
             List<Map<String, Object>> ownedDatasets = new ArrayList<>();
             int grantedPermissionCount = 0;
             Set<Long> uniqueGrantedUserIds = new HashSet<>();
@@ -372,8 +536,8 @@ public class UserAdminController {
                 int documentCount = datasetDocCountMap.computeIfAbsent(datasetId, this::loadDocumentCount);
                 List<Map<String, Object>> grantedUsers = datasetGrantedUsersMap.getOrDefault(datasetId, List.of());
                 grantedPermissionCount += grantedUsers.size();
-                for (Map<String, Object> user : grantedUsers) {
-                    Object uid = user.get("userId");
+                for (Map<String, Object> grantedUser : grantedUsers) {
+                    Object uid = grantedUser.get("userId");
                     if (uid instanceof Number number) {
                         uniqueGrantedUserIds.add(number.longValue());
                     }
@@ -391,7 +555,7 @@ public class UserAdminController {
             int messageCount = 0;
             try {
                 conversations = userConversationMapper.selectList(new LambdaQueryWrapper<UserConversation>()
-                        .eq(UserConversation::getUserId, admin.getId())
+                        .eq(UserConversation::getUserId, user.getId())
                         .orderByDesc(UserConversation::getUpdatedAt)
                         .last("limit 20"));
                 List<String> conversationIds = conversations.stream().map(UserConversation::getId).toList();
@@ -427,22 +591,32 @@ public class UserAdminController {
                         "records", detail
                 ));
             }
-            Map<String, Object> adminItem = new HashMap<>();
-            adminItem.put("adminUserId", admin.getId());
-            adminItem.put("adminUsername", admin.getUsername());
-            adminItem.put("ownedDatasetCount", ownedDatasets.size());
-            adminItem.put("totalGrantedPermissionCount", grantedPermissionCount);
-            adminItem.put("userOverviewCount", uniqueGrantedUserIds.size());
-            adminItem.put("conversationOverviewCount", conversations.size());
-            adminItem.put("conversationRecordCount", messageCount);
-            adminItem.put("ownedDatasets", ownedDatasets);
-            adminItem.put("conversations", conversationItems);
-            adminItems.add(adminItem);
+            Map<String, Object> item = new HashMap<>();
+            item.put("userId", user.getId());
+            item.put("username", user.getUsername());
+            item.put("role", user.getRole());
+            item.put("managerUserId", user.getManagerUserId());
+            item.put("managerUsername", managerNameMap.getOrDefault(user.getManagerUserId(), null));
+            // 兼容历史前端字段，避免老逻辑读取失败。
+            item.put("adminUserId", user.getId());
+            item.put("adminUsername", user.getUsername());
+            item.put("ownedDatasetCount", ownedDatasets.size());
+            item.put("totalGrantedPermissionCount", grantedPermissionCount);
+            item.put("userOverviewCount", uniqueGrantedUserIds.size());
+            item.put("conversationOverviewCount", conversations.size());
+            item.put("conversationRecordCount", messageCount);
+            item.put("ownedDatasets", ownedDatasets);
+            item.put("conversations", conversationItems);
+            items.add(item);
         }
-        return Map.of("generatedAt", Instant.now().toString(), "admins", adminItems);
+        return items;
     }
 
     private User createUser(CreateUserRequest request, String role) {
+        return createUser(request, role, null);
+    }
+
+    private User createUser(CreateUserRequest request, String role, Long managerUserId) {
         if (request.getUsername() == null || request.getUsername().isBlank()) {
             throw new BadRequestException("username 不能为空");
         }
@@ -457,6 +631,7 @@ public class UserAdminController {
         user.setUsername(request.getUsername());
         user.setPasswordHash(passwordCodecService.encode(request.getPassword()));
         user.setRole(role);
+        user.setManagerUserId(managerUserId);
         user.setCreateTime(LocalDateTime.now());
         userMapper.insert(user);
         return user;
@@ -484,10 +659,11 @@ public class UserAdminController {
         permissionMapper.insert(permission);
     }
 
-    private JsonNode appendDatasetCreator(JsonNode jsonNode) {
+    private JsonNode appendDatasetCreator(JsonNode jsonNode, AuthenticatedUser current) {
         if (!(jsonNode instanceof ObjectNode root)) {
             return jsonNode;
         }
+        boolean superAdmin = "super_admin".equalsIgnoreCase(current.getRole());
         JsonNode dataNode = root.path("data");
         if (!(dataNode instanceof ArrayNode arrayNode)) {
             return jsonNode;
@@ -510,11 +686,14 @@ public class UserAdminController {
             String datasetId = datasetNode.path("id").asText("");
             Long ownerId = datasetOwnerMap.get(datasetId);
             if (ownerId == null) {
+                datasetNode.put("manageable", superAdmin);
                 continue;
             }
             User owner = ownerUserMap.get(ownerId);
             datasetNode.put("creatorUserId", ownerId);
             datasetNode.put("creatorUsername", owner == null ? "" : owner.getUsername());
+            boolean manageable = superAdmin || Objects.equals(ownerId, current.getUserId());
+            datasetNode.put("manageable", manageable);
         }
         return root;
     }
@@ -539,9 +718,9 @@ public class UserAdminController {
                 .in(Permission::getResourceType, List.of("DATASET", "DATASET_OWNER")));
     }
 
-    private void validateDatasetDeletePermission(AuthenticatedUser current, String datasetId) {
+    private void validateDatasetManagePermission(AuthenticatedUser current, String datasetId) {
         if (current == null || datasetId == null || datasetId.isBlank()) {
-            throw new ForbiddenException("缺少删除知识库所需参数");
+            throw new ForbiddenException("缺少知识库管理所需参数");
         }
         if ("super_admin".equalsIgnoreCase(current.getRole())) {
             return;
@@ -552,7 +731,46 @@ public class UserAdminController {
                 .eq(Permission::getResourceId, datasetId)
                 .last("limit 1"));
         if (ownerPermission == null) {
-            throw new ForbiddenException("admin 仅可删除自己创建的知识库及内部内容");
+            throw new ForbiddenException("admin 仅可管理自己创建的知识库及内部内容");
+        }
+    }
+
+    private Long resolveNormalUserManagerId(AuthenticatedUser current, CreateUserRequest request) {
+        if (current == null) {
+            throw new ForbiddenException("认证上下文不存在");
+        }
+        if ("admin".equalsIgnoreCase(current.getRole())) {
+            return current.getUserId();
+        }
+        if (!"super_admin".equalsIgnoreCase(current.getRole())) {
+            throw new ForbiddenException("仅 admin/super_admin 可创建普通用户");
+        }
+        Long candidateManagerId = request.getManagerUserId();
+        if (candidateManagerId == null) {
+            throw new BadRequestException("super_admin 创建普通用户必须传入 manager_user_id");
+        }
+        if (Objects.equals(candidateManagerId, current.getUserId())) {
+            throw new BadRequestException("super_admin 不能将普通用户绑定给自己，请指定 admin 作为直属管理员");
+        }
+        User manager = userMapper.selectById(candidateManagerId);
+        if (manager == null || !"admin".equalsIgnoreCase(manager.getRole())) {
+            throw new BadRequestException("manager_user_id 必须指向 admin 用户");
+        }
+        return candidateManagerId;
+    }
+
+    private void validateTargetUserInManageScope(AuthenticatedUser current, Long targetUserId) {
+        if (current == null || targetUserId == null) {
+            throw new ForbiddenException("授权目标用户不能为空");
+        }
+        if ("super_admin".equalsIgnoreCase(current.getRole())) {
+            return;
+        }
+        if (!Objects.equals(current.getUserId(), targetUserId)) {
+            User target = userMapper.selectById(targetUserId);
+            if (target == null || !Objects.equals(target.getManagerUserId(), current.getUserId())) {
+                throw new ForbiddenException("仅可分配自己及直属用户权限");
+            }
         }
     }
 
@@ -689,6 +907,16 @@ public class UserAdminController {
         private String username;
         private String password;
         private String name;
+        private Long managerUserId;
+    }
+
+    @Data
+    /**
+     * 修改用户请求体。
+     */
+    public static class UpdateUserRequest {
+        private String username;
+        private String password;
     }
 
     @Data

@@ -10,6 +10,7 @@ CREATE TABLE t_user (
     username VARCHAR(64) NOT NULL UNIQUE COMMENT '用户名',
     password_hash VARCHAR(128) NULL COMMENT 'BCrypt密码哈希',
     role VARCHAR(20) NOT NULL DEFAULT 'user' COMMENT '角色: super_admin/admin/user',
+    manager_user_id BIGINT NULL COMMENT '直属管理员ID(普通用户使用)',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP
 ) COMMENT '用户表';
 

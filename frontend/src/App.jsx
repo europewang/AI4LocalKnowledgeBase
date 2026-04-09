@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MessageSquare, Database, Send, User, Bot, Layers, CheckSquare, Loader2, LogOut, Shield, Users, Lock, BookOpen, FileText, X, ChevronLeft, ChevronDown, ZoomIn, ZoomOut, Image as ImageIcon, Upload, Trash2, Clock, Search, RefreshCw, Brain, Edit, Settings, Download, Plus } from 'lucide-react'
 import Markdown from 'react-markdown'
 import clsx from 'clsx'
@@ -172,6 +172,63 @@ async function updateDocument(datasetId, docId, name) {
 async function fetchUsers() {
   const res = await apiFetch('/admin/users')
   if (!res.ok) throw new Error('Failed to fetch users')
+  return res.json()
+}
+
+async function createAdminUser({ username, password }) {
+  const res = await apiFetch('/admin/users/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  })
+  if (!res.ok) throw new Error('创建管理员失败')
+  return res.json()
+}
+
+async function createNormalUser({ username, password, managerUserId }) {
+  const body = { username, password }
+  if (managerUserId !== undefined && managerUserId !== null && String(managerUserId).trim()) {
+    body.manager_user_id = Number(managerUserId)
+  }
+  const res = await apiFetch('/admin/users/normal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('创建普通用户失败')
+  return res.json()
+}
+
+async function promoteUserToAdmin(userId) {
+  const res = await apiFetch(`/admin/users/${userId}/promote-admin`, {
+    method: 'POST'
+  })
+  if (!res.ok) throw new Error('升级为管理员失败')
+  return res.json()
+}
+
+async function deleteManagedUser(userId) {
+  const res = await apiFetch(`/admin/users/${userId}`, {
+    method: 'DELETE'
+  })
+  if (!res.ok) throw new Error('删除用户失败')
+  return res.json()
+}
+
+async function updateManagedUser(userId, { username, password }) {
+  const body = {}
+  if (username !== undefined) {
+    body.username = username
+  }
+  if (password !== undefined) {
+    body.password = password
+  }
+  const res = await apiFetch(`/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('修改用户失败')
   return res.json()
 }
 
@@ -860,12 +917,15 @@ function Sidebar({ role, username, activeTab, setActiveTab, onLogout }) {
   const menuItems = isSuperAdminRole(role) ? [
     { id: 'super_overview', label: '管理员总览', icon: Users },
     { id: 'datasets', label: '知识库管理', icon: Database },
+    { id: 'user_management', label: '用户管理', icon: User },
     { id: 'permissions', label: '权限分配', icon: Lock },
     { id: 'skills', label: '技能管理', icon: Settings },
     { id: 'route_samples', label: '审计查询', icon: Brain },
     { id: 'chat', label: '调试对话', icon: MessageSquare },
   ] : (isAdminLikeRole(role) ? [
+    { id: 'super_overview', label: '管理员总览', icon: Users },
     { id: 'datasets', label: '知识库管理', icon: Database },
+    { id: 'user_management', label: '用户管理', icon: User },
     { id: 'permissions', label: '权限分配', icon: Lock },
     { id: 'skills', label: '技能管理', icon: Settings },
     { id: 'chat', label: '调试对话', icon: MessageSquare },
@@ -1549,13 +1609,16 @@ function DatasetDetail({ dataset, onBack, onUpdate }) {
 }
 
 function DatasetCard({ dataset, onClick, onDelete, onRename, selected, onSelect, selectionMode }) {
+  const manageable = dataset?.manageable !== false
+  const canSelect = manageable
+  const cardClickable = selectionMode ? canSelect : manageable
   return (
     <div 
-      onClick={selectionMode ? (e) => onSelect(dataset.id, e) : onClick}
-      className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all cursor-pointer group relative ${selected ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-100 hover:border-blue-200'}`}
+      onClick={selectionMode ? (e) => canSelect && onSelect(dataset.id, e) : (cardClickable ? onClick : undefined)}
+      className={`bg-white rounded-xl border p-6 hover:shadow-lg transition-all group relative ${cardClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-90'} ${selected ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-slate-100 hover:border-blue-200'}`}
     >
       <div className="absolute top-4 right-4 z-10 flex gap-2">
-        {!selectionMode && (
+        {!selectionMode && manageable && (
           <>
             <button 
               onClick={(e) => onRename(dataset, e)}
@@ -1574,8 +1637,8 @@ function DatasetCard({ dataset, onClick, onDelete, onRename, selected, onSelect,
           </>
         )}
         <div 
-          onClick={(e) => onSelect(dataset.id, e)}
-          className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-slate-300 hover:border-blue-400'}`}
+          onClick={(e) => canSelect && onSelect(dataset.id, e)}
+          className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${canSelect ? '' : 'opacity-40 cursor-not-allowed'} ${selected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-slate-300 hover:border-blue-400'}`}
         >
           {selected && <CheckSquare size={14} />}
         </div>
@@ -1592,6 +1655,9 @@ function DatasetCard({ dataset, onClick, onDelete, onRename, selected, onSelect,
       <div className="text-xs text-slate-500 mb-3">
         创建人：{dataset.creatorUsername || dataset.creator_username || dataset.creatorUserName || dataset.owner_username || dataset.ownerUsername || dataset.created_by || '未知'}
       </div>
+      {!manageable && (
+        <div className="text-[11px] text-amber-600 mb-3">仅可查看该知识库存在，不可进入内部内容</div>
+      )}
       
       <div className="flex items-center justify-between text-xs text-slate-500 border-t pt-4">
         <span className="flex items-center gap-1">
@@ -1622,6 +1688,7 @@ function DatasetManager() {
     initialDescription: '',
     isSubmitting: false
   })
+  const manageableDatasets = useMemo(() => datasets.filter(ds => ds?.manageable !== false), [datasets])
 
   const loadData = () => {
     setLoading(true)
@@ -1723,10 +1790,10 @@ function DatasetManager() {
   }
 
   const handleSelectAll = () => {
-    if (selectedDatasets.length === datasets.length) {
+    if (selectedDatasets.length === manageableDatasets.length) {
       setSelectedDatasets([])
     } else {
-      setSelectedDatasets(datasets.map(d => d.id))
+      setSelectedDatasets(manageableDatasets.map(d => d.id))
     }
   }
 
@@ -1747,12 +1814,12 @@ function DatasetManager() {
           </h2>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-slate-500 text-sm">创建和管理您的本地知识库</p>
-            {datasets.length > 0 && (
+            {manageableDatasets.length > 0 && (
               <button 
                 onClick={handleSelectAll}
                 className="text-xs text-blue-600 hover:underline ml-2"
               >
-                {selectedDatasets.length === datasets.length ? '取消全选' : '全选'}
+                {selectedDatasets.length === manageableDatasets.length ? '取消全选' : '全选'}
               </button>
             )}
           </div>
@@ -1796,7 +1863,13 @@ function DatasetManager() {
             <DatasetCard 
               key={ds.id} 
               dataset={ds} 
-              onClick={() => setViewingDataset(ds)} 
+              onClick={() => {
+                if (ds?.manageable === false) {
+                  alert('该知识库不是你创建的，仅可查看存在，不可进入内部内容。')
+                  return
+                }
+                setViewingDataset(ds)
+              }} 
               onDelete={handleDelete}
               onRename={handleRenameDataset}
               selected={selectedDatasets.includes(ds.id)}
@@ -1984,6 +2057,310 @@ function PermissionManager() {
               保存权限
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UserManagement({ currentRole, currentUserId }) {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+  const [actionLoadingId, setActionLoadingId] = useState(null)
+  const [editingUserId, setEditingUserId] = useState(null)
+  const [editForm, setEditForm] = useState({ username: '', password: '' })
+  const [createForm, setCreateForm] = useState({
+    username: '',
+    password: '',
+    role: 'user',
+    managerUserId: ''
+  })
+  const canCreateAdmin = isSuperAdminRole(currentRole)
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchUsers()
+      setUsers(Array.isArray(data) ? data : [])
+    } catch (e) {
+      alert(`加载用户失败: ${e.message}`)
+      setUsers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadUsers()
+  }, [loadUsers])
+
+  const handleCreateUser = async () => {
+    const username = String(createForm.username || '').trim()
+    const password = String(createForm.password || '').trim()
+    if (!username || !password) {
+      alert('请输入用户名和密码')
+      return
+    }
+    if (canCreateAdmin && createForm.role === 'user' && !String(createForm.managerUserId || '').trim()) {
+      alert('超级管理员创建普通用户时，必须指定直属管理员ID')
+      return
+    }
+    setCreateLoading(true)
+    try {
+      let created = null
+      // 说明：仅 super_admin 可创建管理员；admin 只能创建普通用户并自动归属自己。
+      if (createForm.role === 'admin') {
+        if (!canCreateAdmin) {
+          throw new Error('仅超级管理员可创建管理员')
+        }
+        created = await createAdminUser({ username, password })
+      } else {
+        created = await createNormalUser({
+          username,
+          password,
+          managerUserId: canCreateAdmin ? createForm.managerUserId : undefined
+        })
+      }
+      await loadUsers()
+      setCreateForm(prev => ({ ...prev, username: '', password: '', managerUserId: '' }))
+      alert(`创建成功：ID=${created?.id ?? '-'}，用户名=${created?.username || username}，角色=${created?.role || createForm.role}`)
+    } catch (e) {
+      alert(`创建失败: ${e.message}`)
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
+  const handlePromote = async (user) => {
+    if (!isSuperAdminRole(currentRole)) {
+      return
+    }
+    if (!window.confirm(`确认将用户 ${user.username} 升级为管理员？`)) {
+      return
+    }
+    setActionLoadingId(user.id)
+    try {
+      await promoteUserToAdmin(user.id)
+      await loadUsers()
+      alert('升级成功')
+    } catch (e) {
+      alert(`升级失败: ${e.message}`)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const canEditUser = (user) => {
+    if (!user || !user.id) {
+      return false
+    }
+    if (isSuperAdminRole(currentRole)) {
+      return true
+    }
+    if (Number(user.id) === Number(currentUserId)) {
+      return true
+    }
+    return user.role === 'user' && Number(user.managerUserId) === Number(currentUserId)
+  }
+
+  const openEdit = (user) => {
+    setEditingUserId(user.id)
+    setEditForm({ username: user.username || '', password: '' })
+  }
+
+  const handleSaveEdit = async (user) => {
+    const nextUsername = String(editForm.username || '').trim()
+    const nextPassword = String(editForm.password || '').trim()
+    if (!nextUsername && !nextPassword) {
+      alert('用户名和密码不能同时为空')
+      return
+    }
+    setActionLoadingId(user.id)
+    try {
+      await updateManagedUser(user.id, { username: nextUsername, password: nextPassword })
+      setEditingUserId(null)
+      setEditForm({ username: '', password: '' })
+      await loadUsers()
+      alert('修改成功')
+    } catch (e) {
+      alert(`修改失败: ${e.message}`)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const canDeleteUser = (user) => {
+    if (!user || !user.id) {
+      return false
+    }
+    if (isSuperAdminRole(currentRole)) {
+      return user.role !== 'super_admin' && user.id !== currentUserId
+    }
+    return user.role === 'user' && Number(user.managerUserId) === Number(currentUserId)
+  }
+
+  const handleDeleteUser = async (user) => {
+    if (!canDeleteUser(user)) {
+      return
+    }
+    if (!window.confirm(`确认删除用户 ${user.username}？此操作不可恢复。`)) {
+      return
+    }
+    setActionLoadingId(user.id)
+    try {
+      await deleteManagedUser(user.id)
+      await loadUsers()
+      alert('删除成功')
+    } catch (e) {
+      alert(`删除失败: ${e.message}`)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto h-full overflow-y-auto">
+      <h2 className="text-2xl font-bold text-slate-800 mb-6">用户管理</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="bg-white p-6 rounded-xl border shadow-sm h-fit">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+            <Plus className="text-blue-500" size={20} />
+            创建用户
+          </h3>
+          <div className="space-y-3">
+            <input
+              value={createForm.username}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, username: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="新用户名"
+            />
+            <input
+              type="password"
+              value={createForm.password}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="新用户密码"
+            />
+            <select
+              value={createForm.role}
+              onChange={(e) => setCreateForm(prev => ({ ...prev, role: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="user">普通用户</option>
+              {canCreateAdmin && <option value="admin">普通管理员</option>}
+            </select>
+            {canCreateAdmin && createForm.role === 'user' && (
+              <input
+                value={createForm.managerUserId}
+                onChange={(e) => setCreateForm(prev => ({ ...prev, managerUserId: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="直属管理员ID（必填）"
+              />
+            )}
+            <button
+              onClick={handleCreateUser}
+              disabled={createLoading}
+              className="w-full px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {createLoading && <Loader2 size={16} className="animate-spin" />}
+              创建用户
+            </button>
+          </div>
+        </div>
+        <div className="lg:col-span-2 bg-white p-6 rounded-xl border shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <Users className="text-blue-500" size={20} />
+              用户列表
+            </h3>
+            <button onClick={loadUsers} className="text-sm text-blue-600 hover:underline">刷新</button>
+          </div>
+          {loading ? (
+            <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-slate-400" /></div>
+          ) : (
+            <div className="space-y-2">
+              {users.map((u) => (
+                <div key={u.id || u.username}>
+                  <div className="border rounded-lg px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-slate-800">{u.username}</div>
+                      <div className="text-xs text-slate-500">
+                        ID: {u.id} | 角色: {u.role} | 直属管理员ID: {u.managerUserId ?? '-'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canEditUser(u) && (
+                        <button
+                          onClick={() => openEdit(u)}
+                          disabled={actionLoadingId === u.id}
+                          className="px-3 py-1.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 text-xs disabled:opacity-50"
+                        >
+                          修改账号
+                        </button>
+                      )}
+                      {isSuperAdminRole(currentRole) && u.role === 'user' && (
+                        <button
+                          onClick={() => handlePromote(u)}
+                          disabled={actionLoadingId === u.id}
+                          className="px-3 py-1.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 text-xs disabled:opacity-50"
+                        >
+                          升级为管理员
+                        </button>
+                      )}
+                      {canDeleteUser(u) && (
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={actionLoadingId === u.id}
+                          className="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 text-xs disabled:opacity-50"
+                        >
+                          删除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {editingUserId === u.id && (
+                    <div className="mt-2 p-3 border rounded-lg bg-slate-50">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input
+                          value={editForm.username}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, username: e.target.value }))}
+                          className="w-full px-3 py-2 rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="新用户名（可改）"
+                        />
+                        <input
+                          type="password"
+                          value={editForm.password}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, password: e.target.value }))}
+                          className="w-full px-3 py-2 rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="新密码（不改可留空）"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => handleSaveEdit(u)}
+                          disabled={actionLoadingId === u.id}
+                          className="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 text-xs disabled:opacity-50"
+                        >
+                          保存修改
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingUserId(null)
+                            setEditForm({ username: '', password: '' })
+                          }}
+                          className="px-3 py-1.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {users.length === 0 && <div className="text-center py-8 text-slate-400">暂无可管理用户</div>}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2515,7 +2892,8 @@ function SkillFormPanel({ title, description, form, setForm, onSubmit, submitTex
   )
 }
 
-function SkillManager() {
+function SkillManager({ role }) {
+  const canManageSkills = isSuperAdminRole(role)
   const [subPage, setSubPage] = useState('overview')
   const [skills, setSkills] = useState([])
   const [auditRows, setAuditRows] = useState([])
@@ -2576,8 +2954,10 @@ function SkillManager() {
   }, [])
 
   useEffect(() => {
-    loadSkills(onlineOnly)
-  }, [onlineOnly, loadSkills])
+    if (canManageSkills) {
+      loadSkills(onlineOnly)
+    }
+  }, [onlineOnly, loadSkills, canManageSkills])
 
   useEffect(() => {
     loadAudit(auditFilters)
@@ -2734,7 +3114,7 @@ function SkillManager() {
           </div>
         </div>
 
-        {subPage === 'create' && (
+        {subPage === 'create' && canManageSkills && (
           <>
             <button
               onClick={() => setSubPage('overview')}
@@ -2754,7 +3134,7 @@ function SkillManager() {
           </>
         )}
 
-        {subPage === 'update' && (
+        {subPage === 'update' && canManageSkills && (
           <>
             <button
               onClick={() => setSubPage('overview')}
@@ -2778,36 +3158,41 @@ function SkillManager() {
         {subPage === 'overview' && (
           <>
             <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={onlineOnly}
-                  onChange={(e) => setOnlineOnly(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                仅显示在线技能
-              </label>
-              <button
-                onClick={() => {
-                  setCreateForm(createDefaultSkillForm())
-                  setSubPage('create')
-                }}
-                className="px-4 py-2 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 flex items-center gap-2"
-              >
-                <Plus size={16} />
-                新增技能
-              </button>
-              <button
-                onClick={() => loadSkills(onlineOnly)}
-                disabled={skillsLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                <RefreshCw size={16} />
-                刷新技能
-              </button>
+              {canManageSkills && (
+                <>
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={onlineOnly}
+                      onChange={(e) => setOnlineOnly(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    仅显示在线技能
+                  </label>
+                  <button
+                    onClick={() => {
+                      setCreateForm(createDefaultSkillForm())
+                      setSubPage('create')
+                    }}
+                    className="px-4 py-2 border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 flex items-center gap-2"
+                  >
+                    <Plus size={16} />
+                    新增技能
+                  </button>
+                  <button
+                    onClick={() => loadSkills(onlineOnly)}
+                    disabled={skillsLoading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <RefreshCw size={16} />
+                    刷新技能
+                  </button>
+                </>
+              )}
             </div>
 
-            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+            {canManageSkills && (
+              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
               {skillsError && (
                 <div className="px-4 py-3 text-sm text-red-600 border-b bg-red-50">
                   {skillsError}
@@ -2896,7 +3281,8 @@ function SkillManager() {
                   </tbody>
                 </table>
               </div>
-            </div>
+              </div>
+            )}
 
             <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap items-end gap-3">
               <div>
@@ -3085,10 +3471,11 @@ function SkillManager() {
   )
 }
 
-function SuperAdminOverview() {
+function SuperAdminOverview({ role }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [admins, setAdmins] = useState([])
+  const [users, setUsers] = useState([])
   const [generatedAt, setGeneratedAt] = useState('')
   const [expandedDatasets, setExpandedDatasets] = useState({})
   const [expandedConversations, setExpandedConversations] = useState({})
@@ -3100,10 +3487,12 @@ function SuperAdminOverview() {
     try {
       const data = await fetchSuperAdminOverview()
       setAdmins(Array.isArray(data?.admins) ? data.admins : [])
+      setUsers(Array.isArray(data?.users) ? data.users : [])
       setGeneratedAt(data?.generatedAt || '')
     } catch (e) {
       setError(e?.message || '加载失败')
       setAdmins([])
+      setUsers([])
       setGeneratedAt('')
     } finally {
       setLoading(false)
@@ -3136,14 +3525,150 @@ function SuperAdminOverview() {
     setExpandedConversationRecords(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
+  const isSuper = isSuperAdminRole(role)
+  const pageTitle = isSuper ? '超级管理员总览' : '管理员总览'
+  const pageDesc = isSuper
+    ? '展示管理员与普通用户的知识库、授权时间、会话与对话记录明细'
+    : '仅展示你管辖的普通用户知识库、授权时间、会话与对话记录明细'
+
+  // 统一卡片渲染，避免管理员/普通用户两套重复 JSX。
+  const renderItems = (items, defaultRole) => (
+    items.map((subject) => {
+      const subjectId = subject.userId || subject.adminUserId || subject.username || subject.adminUsername
+      const subjectName = subject.username || subject.adminUsername || '-'
+      const subjectRole = subject.role || defaultRole
+      return (
+        <div key={subjectId} className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b bg-slate-50">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-indigo-600" />
+                <div className="font-semibold text-slate-800">{subjectName}</div>
+                <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">{subjectRole}</span>
+              </div>
+              <div className="text-xs text-slate-600">
+                知识库 {subject.ownedDatasetCount || 0} · 授权记录 {subject.totalGrantedPermissionCount || 0} · 用户总览 {subject.userOverviewCount || 0} · 会话 {subject.conversationOverviewCount || 0} · 对话记录 {subject.conversationRecordCount || 0}
+                {subjectRole === 'user' && (
+                  <> · 上层管理员 {subject.managerUsername || '-'}</>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="p-4 space-y-3">
+            {(!Array.isArray(subject.ownedDatasets) || subject.ownedDatasets.length === 0) && (
+              <div className="text-sm text-slate-400 px-1">该用户暂无登记的知识库。</div>
+            )}
+            {Array.isArray(subject.ownedDatasets) && subject.ownedDatasets.map((dataset) => (
+              <div key={`${subjectId}-${dataset.datasetId}`} className="rounded-lg border border-slate-200">
+                <div className="px-4 py-3 bg-slate-50 border-b flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-slate-800 font-medium">
+                    <Database size={16} className="text-blue-600" />
+                    <span>{dataset.datasetName || dataset.datasetId}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-slate-600">
+                      文档数 {dataset.documentCount ?? 0}
+                    </div>
+                    <button
+                      onClick={() => toggleDataset(subjectId, dataset.datasetId)}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      {expandedDatasets[`${subjectId}-${dataset.datasetId}`] ? '收起' : '展开'}
+                    </button>
+                  </div>
+                </div>
+                {expandedDatasets[`${subjectId}-${dataset.datasetId}`] && (
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="text-xs text-slate-600">
+                      知识库创建时间：{formatTime(dataset.datasetCreatedAt)}
+                    </div>
+                    <div className="text-xs text-slate-500">已授权用户</div>
+                    {(!Array.isArray(dataset.grantedUsers) || dataset.grantedUsers.length === 0) ? (
+                      <div className="text-sm text-slate-400">暂无授权用户</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {dataset.grantedUsers.map((u) => (
+                          <div key={`${dataset.datasetId}-${u.userId}`} className="text-xs text-slate-700">
+                            {u.username} ({u.role}) · 授权时间 {formatTime(u.authorizedAt)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="rounded-lg border border-slate-200">
+              <div className="px-4 py-3 bg-slate-50 border-b text-sm font-medium text-slate-800">
+                用户会话总览
+              </div>
+              <div className="px-4 py-3 space-y-2">
+                {(!Array.isArray(subject.conversations) || subject.conversations.length === 0) ? (
+                  <div className="text-sm text-slate-400">暂无会话记录</div>
+                ) : (
+                  subject.conversations.map((conversation) => {
+                    const conversationKey = `${subjectId}-${conversation.conversationId}`
+                    const expanded = !!expandedConversations[conversationKey]
+                    const recordExpanded = !!expandedConversationRecords[conversationKey]
+                    return (
+                      <div key={conversationKey} className="rounded border border-slate-200">
+                        <div className="px-3 py-2 flex items-center justify-between bg-white">
+                          <div className="text-xs text-slate-800">
+                            {conversation.title || conversation.conversationId} · 消息 {conversation.messageCount || 0}
+                          </div>
+                          <button
+                            onClick={() => toggleConversation(subjectId, conversation.conversationId)}
+                            className="text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            {expanded ? '收起' : '展开'}
+                          </button>
+                        </div>
+                        {expanded && (
+                          <div className="px-3 py-2 border-t bg-slate-50 space-y-2">
+                            <div className="text-xs text-slate-600">
+                              创建时间：{formatTime(conversation.createdAt)} · 更新时间：{formatTime(conversation.updatedAt)}
+                            </div>
+                            <button
+                              onClick={() => toggleConversationRecords(subjectId, conversation.conversationId)}
+                              className="text-xs text-indigo-600 hover:text-indigo-800"
+                            >
+                              {recordExpanded ? '收起对话细节' : '展开对话细节'}
+                            </button>
+                            {recordExpanded && (
+                              <div className="space-y-1">
+                                {(!Array.isArray(conversation.records) || conversation.records.length === 0) ? (
+                                  <div className="text-xs text-slate-400">暂无对话明细</div>
+                                ) : (
+                                  conversation.records.map((record) => (
+                                    <div key={`${conversationKey}-${record.id}`} className="text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5">
+                                      [{record.role}] {record.content} · {formatTime(record.recordTime)}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    })
+  )
+
   return (
     <div className="p-8 h-full overflow-y-auto">
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">超级管理员总览</h2>
+            <h2 className="text-2xl font-bold text-slate-800">{pageTitle}</h2>
             <p className="text-sm text-slate-500 mt-1">
-              查看管理员的知识库、授权时间、会话与对话记录明细
+              {pageDesc}
             </p>
           </div>
           <button
@@ -3173,131 +3698,24 @@ function SuperAdminOverview() {
           </div>
         )}
 
-        {!loading && admins.length === 0 && !error && (
-          <div className="bg-white rounded-xl border shadow-sm px-4 py-10 text-center text-slate-400">
-            暂无管理员资产数据
+        {!loading && isSuper && (
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-slate-700">管理员总览</div>
+            {admins.length === 0 ? (
+              <div className="bg-white rounded-xl border shadow-sm px-4 py-10 text-center text-slate-400">暂无管理员资产数据</div>
+            ) : renderItems(admins, 'admin')}
           </div>
         )}
-
-        {!loading && admins.map((admin) => (
-          <div key={admin.adminUserId || admin.adminUsername} className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b bg-slate-50">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Users size={18} className="text-indigo-600" />
-                  <div className="font-semibold text-slate-800">{admin.adminUsername || '-'}</div>
-                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">admin</span>
-                </div>
-                <div className="text-xs text-slate-600">
-                  知识库 {admin.ownedDatasetCount || 0} · 授权记录 {admin.totalGrantedPermissionCount || 0} · 用户总览 {admin.userOverviewCount || 0} · 会话 {admin.conversationOverviewCount || 0} · 对话记录 {admin.conversationRecordCount || 0}
-                </div>
+        {!loading && (
+          <div className="space-y-3">
+            <div className="text-sm font-medium text-slate-700">{isSuper ? '普通用户总览' : '我的管辖普通用户总览'}</div>
+            {users.length === 0 ? (
+              <div className="bg-white rounded-xl border shadow-sm px-4 py-10 text-center text-slate-400">
+                {isSuper ? '暂无普通用户资产数据' : '暂无你管辖的普通用户数据'}
               </div>
-            </div>
-
-            <div className="p-4 space-y-3">
-              {(!Array.isArray(admin.ownedDatasets) || admin.ownedDatasets.length === 0) && (
-                <div className="text-sm text-slate-400 px-1">该管理员暂无登记的知识库。</div>
-              )}
-              {Array.isArray(admin.ownedDatasets) && admin.ownedDatasets.map((dataset) => (
-                <div key={`${admin.adminUserId}-${dataset.datasetId}`} className="rounded-lg border border-slate-200">
-                  <div className="px-4 py-3 bg-slate-50 border-b flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-slate-800 font-medium">
-                      <Database size={16} className="text-blue-600" />
-                      <span>{dataset.datasetName || dataset.datasetId}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-xs text-slate-600">
-                        文档数 {dataset.documentCount ?? 0}
-                      </div>
-                      <button
-                        onClick={() => toggleDataset(admin.adminUserId || admin.adminUsername, dataset.datasetId)}
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        {expandedDatasets[`${admin.adminUserId || admin.adminUsername}-${dataset.datasetId}`] ? '收起' : '展开'}
-                      </button>
-                    </div>
-                  </div>
-                  {expandedDatasets[`${admin.adminUserId || admin.adminUsername}-${dataset.datasetId}`] && (
-                    <div className="px-4 py-3 space-y-2">
-                      <div className="text-xs text-slate-600">
-                        知识库创建时间：{formatTime(dataset.datasetCreatedAt)}
-                      </div>
-                      <div className="text-xs text-slate-500">已授权用户</div>
-                      {(!Array.isArray(dataset.grantedUsers) || dataset.grantedUsers.length === 0) ? (
-                        <div className="text-sm text-slate-400">暂无授权用户</div>
-                      ) : (
-                        <div className="space-y-1">
-                          {dataset.grantedUsers.map((u) => (
-                            <div key={`${dataset.datasetId}-${u.userId}`} className="text-xs text-slate-700">
-                              {u.username} ({u.role}) · 授权时间 {formatTime(u.authorizedAt)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div className="rounded-lg border border-slate-200">
-                <div className="px-4 py-3 bg-slate-50 border-b text-sm font-medium text-slate-800">
-                  管理员会话总览
-                </div>
-                <div className="px-4 py-3 space-y-2">
-                  {(!Array.isArray(admin.conversations) || admin.conversations.length === 0) ? (
-                    <div className="text-sm text-slate-400">暂无会话记录</div>
-                  ) : (
-                    admin.conversations.map((conversation) => {
-                      const conversationKey = `${admin.adminUserId || admin.adminUsername}-${conversation.conversationId}`
-                      const expanded = !!expandedConversations[conversationKey]
-                      const recordExpanded = !!expandedConversationRecords[conversationKey]
-                      return (
-                        <div key={conversationKey} className="rounded border border-slate-200">
-                          <div className="px-3 py-2 flex items-center justify-between bg-white">
-                            <div className="text-xs text-slate-800">
-                              {conversation.title || conversation.conversationId} · 消息 {conversation.messageCount || 0}
-                            </div>
-                            <button
-                              onClick={() => toggleConversation(admin.adminUserId || admin.adminUsername, conversation.conversationId)}
-                              className="text-xs text-blue-600 hover:text-blue-800"
-                            >
-                              {expanded ? '收起' : '展开'}
-                            </button>
-                          </div>
-                          {expanded && (
-                            <div className="px-3 py-2 border-t bg-slate-50 space-y-2">
-                              <div className="text-xs text-slate-600">
-                                创建时间：{formatTime(conversation.createdAt)} · 更新时间：{formatTime(conversation.updatedAt)}
-                              </div>
-                              <button
-                                onClick={() => toggleConversationRecords(admin.adminUserId || admin.adminUsername, conversation.conversationId)}
-                                className="text-xs text-indigo-600 hover:text-indigo-800"
-                              >
-                                {recordExpanded ? '收起对话细节' : '展开对话细节'}
-                              </button>
-                              {recordExpanded && (
-                                <div className="space-y-1">
-                                  {(!Array.isArray(conversation.records) || conversation.records.length === 0) ? (
-                                    <div className="text-xs text-slate-400">暂无对话明细</div>
-                                  ) : (
-                                    conversation.records.map((record) => (
-                                      <div key={`${conversationKey}-${record.id}`} className="text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5">
-                                        [{record.role}] {record.content} · {formatTime(record.recordTime)}
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
+            ) : renderItems(users, 'user')}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )
@@ -5281,9 +5699,6 @@ function ChatInterface() {
                     >
                       {item.title || '未命名会话'}
                     </button>
-                    <span className="text-[10px] text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
-                      {Math.max(0, Number(item.remainingDays || 0))}天
-                    </span>
                     <button
                       onClick={() => handleStartRenameConversation(item)}
                       disabled={conversationActionLoading}
@@ -5359,9 +5774,6 @@ function ChatInterface() {
             </h2>
             <div className="text-xs text-slate-500 flex items-center gap-2">
               <span>{activeConversationTitle || '未命名会话'}</span>
-              <span className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[10px]">
-                保留{conversationRetentionDays}天
-              </span>
             </div>
           </div>
           {conversationError && (
@@ -5945,6 +6357,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('chat')
   const role = authSession?.user?.role || null
   const username = authSession?.user?.username || ''
+  const userId = authSession?.user?.id || null
 
   useEffect(() => {
     const syncAuthExpired = () => {
@@ -5991,10 +6404,11 @@ function App() {
       />
       <main className="flex-1 h-full overflow-hidden relative">
         {activeTab === 'chat' && <ChatInterface role={role} />}
-        {activeTab === 'super_overview' && isSuperAdminRole(role) && <SuperAdminOverview />}
+        {activeTab === 'super_overview' && isAdminLikeRole(role) && <SuperAdminOverview role={role} />}
         {activeTab === 'datasets' && isAdminLikeRole(role) && <DatasetManager />}
+        {activeTab === 'user_management' && isAdminLikeRole(role) && <UserManagement currentRole={role} currentUserId={userId} />}
         {activeTab === 'permissions' && isAdminLikeRole(role) && <PermissionManager />}
-        {activeTab === 'skills' && isAdminLikeRole(role) && <SkillManager />}
+        {activeTab === 'skills' && isAdminLikeRole(role) && <SkillManager role={role} />}
         {activeTab === 'route_samples' && isSuperAdminRole(role) && <RouteSampleManager />}
       </main>
     </div>

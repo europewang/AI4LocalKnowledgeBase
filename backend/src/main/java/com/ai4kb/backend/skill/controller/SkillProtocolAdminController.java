@@ -6,9 +6,13 @@ import com.ai4kb.backend.skill.service.DynamicSkillAuditService;
 import com.ai4kb.backend.skill.service.DynamicSkillRegistryService;
 import com.ai4kb.backend.user.auth.AuthContextHolder;
 import com.ai4kb.backend.user.auth.AuthenticatedUser;
+import com.ai4kb.backend.user.entity.User;
+import com.ai4kb.backend.user.mapper.UserMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -17,6 +21,9 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/admin/skills")
@@ -29,13 +36,14 @@ public class SkillProtocolAdminController {
 
     private final DynamicSkillRegistryService dynamicSkillRegistryService;
     private final DynamicSkillAuditService dynamicSkillAuditService;
+    private final UserMapper userMapper;
 
     /**
      * 注册或更新动态技能。
      */
     @PostMapping("/register")
     public Map<String, Object> registerSkill(@RequestBody RegisterSkillRequest request) {
-        AuthenticatedUser current = requireAdminLikeUser();
+        AuthenticatedUser current = requireSuperAdminUser();
         DynamicSkillRegistry registry = new DynamicSkillRegistry();
         registry.setToolCode(request.getToolCode());
         registry.setToolName(request.getToolName());
@@ -67,7 +75,7 @@ public class SkillProtocolAdminController {
      */
     @GetMapping
     public List<Map<String, Object>> listSkills(@RequestParam(defaultValue = "false") boolean onlineOnly) {
-        requireAdminLikeUser();
+        requireSuperAdminUser();
         List<DynamicSkillRegistry> skills = onlineOnly ? dynamicSkillRegistryService.listOnlineSkills() : dynamicSkillRegistryService.listAllSkills();
         return skills.stream().map(this::toSkillItem).toList();
     }
@@ -77,21 +85,21 @@ public class SkillProtocolAdminController {
      */
     @PostMapping("/{toolCode}/offline")
     public Map<String, Object> offlineSkill(@PathVariable String toolCode) {
-        AuthenticatedUser current = requireAdminLikeUser();
+        AuthenticatedUser current = requireSuperAdminUser();
         dynamicSkillRegistryService.offlineSkill(toolCode, current.getUserId());
         return Map.of("status", "ok", "tool_code", toolCode, "new_status", "OFFLINE");
     }
 
     @PostMapping("/{toolCode}/online")
     public Map<String, Object> onlineSkill(@PathVariable String toolCode) {
-        AuthenticatedUser current = requireAdminLikeUser();
+        AuthenticatedUser current = requireSuperAdminUser();
         dynamicSkillRegistryService.onlineSkill(toolCode, current.getUserId());
         return Map.of("status", "ok", "tool_code", toolCode, "new_status", "ONLINE");
     }
 
     @DeleteMapping("/{toolCode}")
     public Map<String, Object> deleteSkill(@PathVariable String toolCode) {
-        requireAdminLikeUser();
+        requireSuperAdminUser();
         dynamicSkillRegistryService.deleteSkill(toolCode);
         return Map.of("status", "ok", "tool_code", toolCode, "deleted", true);
     }
@@ -109,7 +117,17 @@ public class SkillProtocolAdminController {
                                          @RequestParam(required = false) Long userId,
                                          @RequestParam(required = false) String status,
                                          @RequestParam(required = false) String toolCode) {
-        requireAdminLikeUser();
+        AuthenticatedUser current = requireAdminLikeUser();
+        Set<Long> scopedUserIds = buildAuditScopeUserIds(current);
+        if (!"super_admin".equalsIgnoreCase(current.getRole()) && scopedUserIds.isEmpty()) {
+            return Map.of(
+                    "items", List.of(),
+                    "total", 0,
+                    "page", Math.max(page, 1),
+                    "page_size", Math.max(1, Math.min(pageSize, 100)),
+                    "has_more", false
+            );
+        }
         DynamicSkillAuditService.AuditQuery query = new DynamicSkillAuditService.AuditQuery(
                 page,
                 pageSize,
@@ -119,7 +137,8 @@ public class SkillProtocolAdminController {
                 username,
                 userId,
                 status,
-                toolCode
+                toolCode,
+                scopedUserIds
         );
         DynamicSkillAuditService.AuditPageResult result = dynamicSkillAuditService.pageAudits(query);
         return Map.of(
@@ -133,8 +152,8 @@ public class SkillProtocolAdminController {
 
     @GetMapping("/audit/options")
     public Map<String, Object> listAuditOptions(@RequestParam(defaultValue = "300") int cap) {
-        requireAdminLikeUser();
-        DynamicSkillAuditService.AuditFilterOptions options = dynamicSkillAuditService.listFilterOptions(cap);
+        AuthenticatedUser current = requireAdminLikeUser();
+        DynamicSkillAuditService.AuditFilterOptions options = dynamicSkillAuditService.listFilterOptions(cap, buildAuditScopeUserIds(current));
         return Map.of(
                 "statuses", options.statuses(),
                 "usernames", options.usernames(),
@@ -195,6 +214,36 @@ public class SkillProtocolAdminController {
             throw new IllegalStateException("仅 admin/super_admin 可执行该操作");
         }
         return user;
+    }
+
+    private AuthenticatedUser requireSuperAdminUser() {
+        AuthenticatedUser user = requireAdminLikeUser();
+        if (!"super_admin".equalsIgnoreCase(user.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅 super_admin 可执行该操作");
+        }
+        return user;
+    }
+
+    private Set<Long> buildAuditScopeUserIds(AuthenticatedUser current) {
+        if (current == null || current.getUserId() == null) {
+            return Set.of();
+        }
+        if ("super_admin".equalsIgnoreCase(current.getRole())) {
+            return null;
+        }
+        List<User> managedUsers = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getManagerUserId, current.getUserId())
+                .eq(User::getRole, "user"));
+        java.util.LinkedHashSet<Long> scope = new java.util.LinkedHashSet<>();
+        scope.add(current.getUserId());
+        if (managedUsers != null) {
+            for (User item : managedUsers) {
+                if (item != null && item.getId() != null) {
+                    scope.add(item.getId());
+                }
+            }
+        }
+        return scope.stream().filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
     }
 
     private LocalDateTime parseDateTime(String raw, boolean endOfDayIfDateOnly) {

@@ -23,6 +23,14 @@ public class UserSchemaMigrationRunner implements ApplicationRunner {
             if (count == null || count == 0) {
                 jdbcTemplate.execute("ALTER TABLE t_user ADD COLUMN password_hash VARCHAR(128) NULL");
             }
+            Integer managerColumnCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 't_user' AND column_name = 'manager_user_id'",
+                    Integer.class
+            );
+            if (managerColumnCount == null || managerColumnCount == 0) {
+                jdbcTemplate.execute("ALTER TABLE t_user ADD COLUMN manager_user_id BIGINT NULL COMMENT '直属管理员ID(普通用户使用)'");
+                jdbcTemplate.execute("CREATE INDEX idx_t_user_manager ON t_user(manager_user_id)");
+            }
             ensureDefaultUser("superadmin", "super_admin");
             ensureDefaultUser("admin", "admin");
             ensureDefaultUser("zhangsan", "user");

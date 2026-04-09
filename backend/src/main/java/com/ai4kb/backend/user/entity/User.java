@@ -24,6 +24,8 @@ public class User {
     @TableField(exist = false)
     private String password;
     private String role;
+    @TableField("manager_user_id")
+    private Long managerUserId;
     private LocalDateTime createTime;
 
     public Long getId() { return id; }
@@ -36,6 +38,8 @@ public class User {
     public void setPassword(String password) { this.password = password; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+    public Long getManagerUserId() { return managerUserId; }
+    public void setManagerUserId(Long managerUserId) { this.managerUserId = managerUserId; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 }
