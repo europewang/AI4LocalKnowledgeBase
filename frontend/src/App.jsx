@@ -5696,6 +5696,9 @@ function ChatInterface() {
                     >
                       {item.title || '未命名会话'}
                     </button>
+                    <span className="text-[10px] text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+                      {Math.max(0, Number(item.remainingDays || 0))}天
+                    </span>
                     <button
                       onClick={() => handleStartRenameConversation(item)}
                       disabled={conversationActionLoading}
@@ -5771,6 +5774,9 @@ function ChatInterface() {
             </h2>
             <div className="text-xs text-slate-500 flex items-center gap-2">
               <span>{activeConversationTitle || '未命名会话'}</span>
+              <span className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[10px]">
+                保留{conversationRetentionDays}天
+              </span>
             </div>
           </div>
           {conversationError && (
